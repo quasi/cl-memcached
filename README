@@ -1,0 +1,22 @@
+CL-MEMCACHED
+============
+
+
+For documentation etc. doc/mc.html
+
+
+MAINTAINED BY: 
+
+Abhijit 'quasi' Rao <quasi@cleartrip.com>
+
+
+AUTHORS:
+
+Abhijit 'quasi' Rao <quasi@cleartrip.com>
+
+
+DEPENDENCIES:
+
+usocket http://www.cliki.net/usocket
+split-sequence http://www.cliki.net/SPLIT-SEQUENCE
+
