@@ -1,0 +1,424 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html> 
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  <title>CL-MEMCACHED</title>
+  <style type="text/css">
+  body {font-family:'monaco','verdana','monospace'; font-size:12px; margin-left:0px; margin-right:0px;margin-top:0px;}
+  pre { padding: 5px; font-family:'courier new','monospace';}
+  .code { padding:5px; background-color:#f0f0f0; font-family:'courier', 'monospace'; font-size:9pt;}
+  blockquote { font-family:'courier new', 'monospace', 'verdana'; font-size:10pt;}
+  h3, h4 { text-decoration: underline; }
+  a { text-decoration: none; }
+  a.noborder { border:0px }
+  a.noborder:hover { border:0px }  a.none { border:1px solid white; }
+  a.none { border:1px solid white; }
+  a.none:hover { border:1px solid white; }
+  a { border:1px solid white; }
+  a:hover   { border: 1px solid black; } 
+  a.noborder { border:0px }
+  a.noborder:hover { border:0px }
+  </style>
+</head>
+
+<body bgcolor=white>
+
+<div style="border:solid blue 0px;padding: 25px;background-color:pink; border-bottom:solid red 2px;">
+<h2>CL-MEMCACHED <small>- Common Lisp interface to the memcached object caching system.</small></h2>
+<div style="float:right;"><img src="mwlisp.png"></div>
+</div>
+
+<div style="margin:15px;margin-left:20px;">
+
+<br>&nbsp;<br><h3><a name=abstract class=none>Abstract</a></h3>
+
+<p>CL-MEMCACHED is a library to interface with the <a href="http://www.danga.com/memcached/" >memcached</a> object caching system.
+<p><i>What is Memcached??</i> According to the home page :
+<blockquote>
+
+<a href="http://www.danga.com/memcached/" >memcached</a> is a high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.
+
+<br><br>
+
+<a href="http://www.danga.com/" >Danga</a> Interactive developed memcached to enhance the speed of <a href="http://livejournal.com" >LiveJournal.com</a>, a site which was already doing 20 million+ dynamic page views per day for 1 million users with a bunch of webservers and a bunch of database servers. memcached dropped the database load to almost nothing, yielding faster page load times for users, better resource utilization, and faster access to the databases on a memcache miss.
+</blockquote>
+
+<p>CL-MEMCACHED implements most of the memcached <a href="http://code.sixapart.com/svn/memcached/trunk/server/doc/protocol.txt" >protocol</a>.  The code has been tested on Allegro CL and does not work on other Lisp's right now.  See file compat.lisp to help.
+
+<p>We have used memcached (1.1.2) in production for over 20 months and have found it to give excellent performance and good stability.  The CL-MEMCACHED has evolved over this period of time from a hack to it's current state.  Our memcached servers have been up for over 60 days at a time having served over a terabyte of data to the network in this period.
+
+
+
+<br><br><p>Here are some sample performance statistics of CL-MEMCACHED and other memcached clients :
+<br>
+<table border=1 style="font-size:9pt;text-align:right;" cellpadding='10px'>
+  <tr><th>client</th><th>lang implementation</th><th>10,000 writes<br>1K data (in msec)</th><th>10,000 reads<br>1K data (in msec)</th><th>10,000 writes<br>10K data (in msec)</th><th>10,000 reads<br>10K data (in msec)</th></tr>
+  <tr><td>cl-memcached</td><td>Allegro 8.0 (AMD64)</td><td>950</td><td>830</td><td>2,130</td><td>1,330</td></tr>
+  <tr><td>memcached-client-1.2.0</td><td>ruby 1.8.5</td><td>727</td><td>874</td><td>1,129</td><td>1,296</td></tr>
+  <tr><td>python-memcached-1.36</td><td>python 2.5.1</td><td>892</td><td>951</td><td>1,092</td><td>1,259</td></tr>
+  <tr><td>php-memcached-2.1.2</td><td>php 4.3.9</td><td>507</td><td>513</td><td>400,000</td><td>660</td></tr>
+</table>
+
+<br>
+<p>The code comes with a <a href="http://www.opensource.org/licenses/bsd-license.php">BSD-style license</a> so you can basically do with it whatever you want.
+
+<p><font color=red>Download shortcut:</font> <a href="cl-memcached-latest.tar.gz">cl-memcached-latest.tar.gz</a>. 
+
+
+<br><br>&nbsp;<br><h3><a class=none name="lists">Lists</a></h3>
+
+<br>The devel mailing list is <a href="http://common-lisp.net/mailman/listinfo/cl-memcached-devel" >cl-memcached-devel</a>.
+<br>The announce mailing list is <a href="http://common-lisp.net/mailman/listinfo/cl-memcached-announce" >cl-memcached-announce</a>. 
+
+<br>&nbsp;<br><h3><a class=none name="example_usage">Example Usage</a></h3>
+
+<p>quick start
+<pre class='code'>
+CL-USER> (asdf:oos 'asdf:load-op :cl-memcached)
+
+CL-USER> (setf *my-cache* (cl-memcached:mc-make-memcache-instance :ip "127.0.0.1" :name "My test cache"))
+#&lt;CL-MEMCACHED:MEMCACHE My test cache on 127.0.0.1:11211 SIZE:64Mb&gt;
+
+CL-USER> (cl-memcached:mc-store "test-key" "This is Test-DATA" :memcache *my-cache* :use-pool t)
+"STORED"
+
+CL-USER> (cl-memcached:mc-get+ "test-key" :memcache *my-cache* :use-pool t)
+"This is Test-DATA"
+
+CL-USER> (cl-memcached:mc-get '("test-key") :memcache *my-cache* :use-pool t)
+(("test-key"
+  #(84 104 105 115 32 105 115 32 84 101 115 116 45 68 65 84 65)))
+
+CL-USER> (cl-memcached:mc-get '("test-key") :memcache *my-cache* :use-pool t :is-string t)
+(("test-key" "This is Test-DATA"))
+
+CL-USER> (cl-memcached:mc-store "test-key-2" "This is Test-DATA Again" :memcache *my-cache* :use-pool t)
+"STORED"
+
+CL-USER> (cl-memcached:mc-get '("test-key" "test-key-2") :memcache *my-cache* :use-pool t :is-string t)
+(("test-key" "This is Test-DATA")
+ ("test-key-2" "This is Test-DATA Again"))
+
+</pre>
+
+
+<br>&nbsp;<br><h3><a class=none name="contents">Contents</a></h3>
+<ol>
+  <li><a href="#download">Download</a>
+  <li><a href="#dictionary">The CL-MEMCACHED dictionary</a>
+    <ol>
+      <li><a href="#*memcache*"><code>*memcache*</code></a>
+      <li><a href="#*use-pool*"><code>*use-pool*</code></a>
+      <li><a href="#*pool-get-trys?*"><code>*pool-get-trys?*</code></a>
+      <li><a href="#mc-decr"><code>mc-decr</code></a>
+      <li><a href="#mc-del"><code>mc-del</code></a>
+      <li><a href="#mc-get"><code>mc-get</code></a>
+      <li><a href="#mc-get+"><code>mc-get+</code></a>
+      <li><a href="#mc-incr"><code>mc-incr</code></a>
+      <li><a href="#mc-make-memcache-instance"><code>mc-make-memcache-instance</code></a>
+      <li><a href="#mc-pool-init"><code>mc-pool-init</code></a>
+      <li><a href="#mc-server-check"><code>mc-server-check</code></a>
+      <li><a href="#mc-stats"><code>mc-stats</code></a>
+      <li><a href="#mc-store"><code>mc-store</code></a>
+      <li><a href="#memcache"><code>memcache</code></a>
+    </ol>
+  <li><a href="#ack">Acknowledgements</a>
+</ol>
+
+<br>&nbsp;<br><h3><a class=none name="download">Download</a></h3>
+
+CL-MEMCACHED together with this documentation can be downloaded from <a
+href="cl-memcached-latest.tar.gz">cl-memcached-latest.tar.gz</a>. The
+current version is 0.4.1. (I will be setting up a SVN repo soon)
+
+<br>&nbsp;<br><h3><a class=none name="dictionary">The CL-MEMCACHED dictionary</a></h3>
+
+
+
+<!-- Entry for *MEMCACHE* -->
+
+<p><br>[Special variable]<br><a class=none name='*memcache*'><b>*memcache*</b></a>
+<blockquote><br>
+
+We can set the current memcache instance to this if there is only one in use.
+
+</blockquote>
+
+<!-- End of entry for *MEMCACHE* -->
+
+
+<!-- Entry for *USE-POOL* -->
+
+<p><br>[Special variable]<br><a class=none name='*use-pool*'><b>*use-pool*</b></a>
+<blockquote><br>
+<pre>
+This controls if we use the connection pool by default. One can set it at each call level, but it is also
+possible to set this global policy.
+
+Default value for the USE-POOL is <i>nil</i>, which means a new connection is make every request.
+</pre>
+</blockquote>
+
+<!-- End of entry for *USE-POOL* -->
+
+<!-- Entry for *POOL-GET-TRYS?* -->
+
+<p><br>[Special variable]<br><a class=none name='*pool-get-trys?'><b>*pool-get-trys?*</b></a>
+<blockquote><br>
+<pre>
+This controls the policy for the fetching connectors from the pool.  There are two approaches :
+a) where we throw an error if pool is empty
+b) where we sleep an try again to see if one is available.
+
+The default value is nil which is the a) approach.
+</pre>
+</blockquote>
+
+<!-- End of entry for *POOL-GET-TRYS?* -->
+
+
+<!-- Entry for MC-STORE -->
+
+<p><br>[Function]<br><a class=none name='mc-store'><b>mc-store</b> <i>key data <tt>&amp;key</tt> memcache command timeout use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Stores data in the memcached server.
+
+<pre><i>key</i> - key by which the data is stored. this is of type SIMPLE-STRING
+<i>data</i> - data to be stored into the cache. data is a sequence of type (UNSIGNED-BYTE 8)
+<i>length</i> - size of data
+<i>memcache</i> - The instance of class memcache which represnts the memcached we want to use.
+<i>command</i> - The storage command we want to use.  There are 3 available : set, add &amp; replace.
+<i>timeout</i> - The time in seconds when this data expires.  0 is never expire.
+</pre>
+</blockquote>
+
+<!-- End of entry for MC-STORE -->
+
+
+<!-- Entry for MC-GET -->
+
+<p><br>[Function]<br><a class=none name='mc-get'><b>mc-get</b> <i>keys-list <tt>&amp;key</tt> memcache use-pool is-string</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Retrive value for key from memcached server.
+<pre>
+<i>keys-list</i> - is a list of the keys, seperated by whitespace, by which data is stored in memcached
+<i>memcache</i> - The instance of class memcache which represnts the memcached we want to use.
+
+Returns a list of lists where each list has two elements key and value
+<i>key</i> - is of type SIMPLE-STRING
+<i>value</i> is of type (UNSIGNED-BYTE 8)
+</pre>
+</blockquote>
+
+<!-- End of entry for MC-GET -->
+
+
+<!-- Entry for MC-GET+ -->
+
+<p><br>[Function]<br><a class=none name='mc-get+'><b>mc-get+</b> <i>key-or-list-of-keys <tt>&amp;key</tt> memcache use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+To be used for non-binary data only. If one key is given
+returns the response in string format
+
+</blockquote>
+
+<!-- End of entry for MC-GET+ -->
+
+
+
+<!-- Entry for MC-DECR -->
+
+<p><br>[Function]<br><a class=none name='mc-decr'><b>mc-decr</b> <i>key <tt>&amp;key</tt> memcache value use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Implements the DECR command.  Decrements the value of a key. Please read memcached documentation for more information
+
+</blockquote>
+
+<!-- End of entry for MC-DECR -->
+
+
+<!-- Entry for MC-DEL -->
+
+<p><br>[Function]<br><a class=none name='mc-del'><b>mc-del</b> <i>key <tt>&amp;key</tt> memcache time use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Deletes a particular &#039;key&#039; and it&#039;s associated data from the memcached server
+
+</blockquote>
+
+<!-- End of entry for MC-DEL -->
+
+
+
+<!-- Entry for MC-INCR -->
+
+<p><br>[Function]<br><a class=none name='mc-incr'><b>mc-incr</b> <i>key <tt>&amp;key</tt> memcache value use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Implements the INCR command.  Increments the value of a key. Please read memcached documentation for more information
+
+</blockquote>
+
+<!-- End of entry for MC-INCR -->
+
+
+<!-- Entry for MC-MAKE-MEMCACHE-INSTANCE -->
+
+<p><br>[Function]<br><a class=none name='mc-make-memcache-instance'><b>mc-make-memcache-instance</b> <i><tt>&amp;key</tt> ip port name pool-size</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Creates an instance of class MEMCACHE which represents a memcached server
+
+</blockquote>
+
+<!-- End of entry for MC-MAKE-MEMCACHE-INSTANCE -->
+
+
+<!-- Entry for MC-POOL-INIT -->
+
+<p><br>[Function]<br><a class=none name='mc-pool-init'><b>mc-pool-init</b> <i><tt>&amp;key</tt> memcache</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Cleans up the pool for this particular instance of memcache
+&amp; reinits it with POOL-SIZE number of objects required by this pool
+
+</blockquote>
+
+<!-- End of entry for MC-POOL-INIT -->
+
+
+<!-- Entry for MC-SERVER-CHECK -->
+
+<p><br>[Function]<br><a class=none name='mc-server-check'><b>mc-server-check</b> <i><tt>&amp;key</tt> memcache</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Performs some basic tests on the Memcache instance and outputs a status string
+
+</blockquote>
+
+<!-- End of entry for MC-SERVER-CHECK -->
+
+
+<!-- Entry for MC-STATS -->
+
+<p><br>[Function]<br><a class=none name='mc-stats'><b>mc-stats</b> <i><tt>&amp;key</tt> memcache use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Returns a struct of type memcache-stats which contains internal statistics from the
+memcached server instance.  Please refer to documentation of <a href="#memcache-stats" >memcache-stats</a> for detailed 
+information about each slot.
+
+</blockquote>
+
+<!-- End of entry for MC-STATS -->
+
+<!-- Entry for MEMCACHED-STATS -->
+
+<p><br>[Structure]<br><a class=none name='memcache-stats'><b>memcache-stats</b></a>
+<blockquote><br>
+The structure which holds the statistics from the memcached server. The fields are :
+<pre>
+field-name                 accessor-function                 documentation
+----------                 -----------------                 -------------
+pid                        mc-stats-pid                      Process id of this server process
+uptime                     mc-stats-uptime                   Number of seconds this server has been running
+time                       mc-stats-time                     current UNIX time according to the server
+version                    mc-stats-version                  Version string of this server
+rusage-user                mc-stats-rusage-user              Accumulated user time for this process
+rusage-system              mc-stats-rusage-system            Accumulated system time for this process
+curr-items                 mc-stats-curr-items               Current number of items stored by the server
+total-items                mc-stats-total-items              Total number of items stored by this server ever since it started
+bytes                      mc-stats-bytes                    Current number of bytes used by this server to store items
+curr-connections           mc-stats-curr-connections         Number of open connections
+total-connections          mc-stats-total-connections        Total number of connections opened since the server started running
+connection-structures      mc-stats-connection-structures    Number of connection structures allocated by the server
+cmd-get                    mc-stats-cmd-get                  Cumulative number of retrieval requests
+cmd-set                    mc-stats-cmd-set                  Cumulative number of storage requests
+get-hits                   mc-stats-get-hits                 Number of keys that have been requested and found present
+get-misses                 mc-stats-get-misses               Number of items that have been requested and not found
+evictions                  mc-stats-evictions                Number of items removed from cache because they passed their expiration time
+bytes-read                 mc-stats-bytes-read               Total number of bytes read by this server from network
+bytes-written              mc-stats-bytes-written            Total number of bytes sent by this server to network
+limit-maxbytes             mc-stats-limit-maxbytes           Number of bytes this server is allowed to use for storage.
+</pre>
+</blockquote>
+
+<!-- End of entry for MC-STATS -->
+
+
+
+<!-- Entry for MEMCACHE -->
+
+<p><br>[Standard class]<br><a class=none name='memcache'><b>memcache</b></a>
+<blockquote><br>
+
+This class represents an instance of the Memcached server
+
+<pre class='code'>
+(defclass memcache ()
+  ((name
+    :initarg :name
+    :reader name
+    :type simple-string
+    :documentation "Name of this Memcache instance")
+   (ip 
+    :initarg :ip
+    :initform "127.0.0.1"
+    :accessor ip
+    :type simple-string
+    :documentation "The IP address of the Memcached server this instance represents")
+   (port 
+    :initarg :port
+    :initform 11211
+    :accessor port
+    :type fixnum
+    :documentation "The port on which the Memcached server this instance represents runs")
+   (memcached-server-storage-size 
+    :initform 0
+    :reader memcached-server-storage-size
+    :type fixnum
+    :documentation "Memory allocated to the Memcached Server")
+   (pool-size
+    :initarg :pool-size
+    :initform 2
+    :reader pool-size)
+   (pool
+    :reader pool))
+  (:documentation "This class represents an instance of the Memcached server"))
+</pre>
+
+</blockquote>
+
+<!-- End of entry for MEMCACHE -->
+
+
+<br>&nbsp;<br><h3><a class=none name="known_isues">Known Issues</a></h3>
+
+The pooling functionality is still experimental. This is mainly because strategies to deal with network errors are not in place.
+
+<br>&nbsp;<br><h3><a class=none name="todo">TODO</a></h3>
+
+<br>- Add facility to created a replicated memcached pair.
+<br>- Support for a memcached cluster (distributedness)
+
+
+<br><h3>People</h3>
+<p>Abhijit 'quasi' Rao
+<p>Chaitanya Gupta
+
+
+<br>&nbsp;<br><h3><a class=none name="ack">Acknowledgements</a></h3>
+
+<p>Thanks to Mr. <a href="http://blog.cleartrip.com/" >Hrush Bhatt</a> of <a href="http://www.cleartrip.com/" >Cleartrip</a> for allowing us to make this library available under a BSD licence.
+
+
+<P>This documentation was prepared with the help of <a href="http://weitz.de/documentation-template/">DOCUMENTATION-TEMPLATE</a>.
+</p>
+</div>
+</body>
+</html>

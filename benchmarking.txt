@@ -1,0 +1,16 @@
+CL-MEMCACHED> (time (mc-benchmark 1000 '("z1") :memcache *x* :use-pool t))
+; cpu time (non-gc) 170 msec user, 160 msec system
+; cpu time (gc)     0 msec user, 0 msec system
+; cpu time (total)  170 msec user, 160 msec system
+; real time  716 msec
+; space allocation:
+;  45,176 cons cells, 1,715,440 other bytes, 17,288 static bytes
+NIL
+CL-MEMCACHED> (time (mc-benchmark 1000 '("z1") :memcache *x* :use-pool nil))
+; cpu time (non-gc) 310 msec user, 300 msec system
+; cpu time (gc)     30 msec user, 0 msec system
+; cpu time (total)  340 msec user, 300 msec system
+; real time  1,087 msec
+; space allocation:
+;  148,266 cons cells, 10,487,360 other bytes, 24,000 static bytes
+
