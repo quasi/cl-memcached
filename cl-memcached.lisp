@@ -1,20 +1,8 @@
 ;;; -*- Mode: LISP; Syntax: COMMON-LISP; Package: CL-USER; Base: 10 -*-
 
-;;; Copyright (c) 2006-2009, Abhijit 'quasi' Rao.  All rights reserved.
+;;; Copyright (c) 2006-2013, Abhijit 'quasi' Rao.  All rights reserved.
 
-;;; Library provided under BSD Licence.
-
-;;; THIS SOFTWARE IS PROVIDED BY THE AUTHOR 'AS IS' AND ANY EXPRESSED
-;;; OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-;;; WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-;;; ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
-;;; DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-;;; DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
-;;; GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-;;; INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-;;; WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-;;; NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-;;; SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+;;; Library provided under MIT Licence.
 
 
 (in-package #:cl-memcached)
@@ -31,11 +19,7 @@
 (defvar *use-pool* nil
   "Default value for the USE-POOL keyword parameter in memcached functions")
 
-(defvar *pool-get-trys?* nil
-  "If true then it will try to wait and sleep for a while if pool item in unavailable,
-if nil then will return immideatly")
-
-(defvar *default-encoding* (flex:make-external-format :iso-8859-1)
+(defvar *default-encoding* (flex:make-external-format :UTF-8)
   "Default encoding")
 
 ;;; Information from the Memcached server
@@ -81,8 +65,6 @@ limit-maxbytes             mc-stats-limit-maxbytes           Number of bytes thi
 
 
 
-
-
 ;;;
 ;;; The main class which represents the memcached server
 ;;;
@@ -92,6 +74,7 @@ limit-maxbytes             mc-stats-limit-maxbytes           Number of bytes thi
     :initarg :name
     :reader name
     :type simple-string
+    :initform "Default Name"
     :documentation "String identifier"))
   (:documentation "Base class of all cache types"))
 
@@ -120,16 +103,15 @@ limit-maxbytes             mc-stats-limit-maxbytes           Number of bytes thi
 
 
 (defmethod print-object ((mc memcache) stream)
-  (format stream "#<~S ~A on ~A:~A>"
-	  (type-of mc)
-	  (when (slot-boundp mc 'name) (name mc))
-	  (when (slot-boundp mc 'ip) (ip mc))
-	  (when (slot-boundp mc 'port) (port mc))))
+  (format stream "#<~S ~A on ~A:~A>" (type-of mc) (name mc) (ip mc) (port mc)))
 
 
 (defmethod initialize-instance :after ((memcache memcache) &rest initargs)
   (declare (ignore initargs))
-  (setf (slot-value memcache 'pool) (make-instance 'memcache-connection-pool :name (concatenate 'simple-string (name memcache) " - Connection Pool") :max-capacity (pool-size memcache)))
+  (setf (slot-value memcache 'pool) (pooler:new-pool :name (concatenate 'simple-string (name memcache) " - Connection Pool")
+						     :max-capacity (pool-size memcache)
+						     :pool-item-maker #'new-memcache-connection
+						     :pool-item-destroyer #'close-memcache-connection))
   (handler-case (mc-pool-init :memcache memcache)
     (error () nil)))
 
@@ -139,6 +121,14 @@ limit-maxbytes             mc-stats-limit-maxbytes           Number of bytes thi
   (make-instance 'memcache :name name :ip ip :port port :pool-size pool-size))
 
 
+(defun new-memcache-connection (memcache)
+  (handler-case (usocket:socket-connect (ip memcache) (port memcache)
+					:element-type #-sbcl '(unsigned-byte 8) #+sbcl :default)
+    (usocket:socket-error () (error 'memcached-server-unreachable))
+    (error () (error 'cannot-make-pool-object))))
+
+(defun close-memcache-connection (connection)
+  (ignore-errors (usocket:socket-close connection)))
 
 
 ;;; Error Conditions
@@ -181,189 +171,50 @@ format control and arguments."
 ;;;
 ;;;
 
-(defclass memcache-connection-pool ()
-  ((name
-    :initarg :name
-    :reader name
-    :initform "Connection Pool"
-    :type simple-string
-    :documentation "Name of this pool")
-   (pool
-    :initform (make-queue)
-    :accessor pool)
-   (pool-lock
-    :reader pool-lock
-    :initform (bordeaux-threads:make-lock "Memcache Connection Pool Lock"))
-   (max-capacity
-    :initarg :max-capacity
-    :reader max-capacity
-    :initform 2
-    :type fixnum
-    :documentation "Total capacity of the pool to hold pool objects")
-   (current-size
-    :accessor current-size
-    :type fixnum
-    :initform 0)
-   (currently-in-use
-    :accessor currently-in-use
-    :initform 0
-    :type fixnum
-    :documentation "Pool objects currently in Use")
-   (total-uses
-    :accessor total-uses
-    :initform 0
-    :type fixnum
-    :documentation "Total uses of the pool")
-   (total-created
-    :accessor total-created
-    :initform 0
-    :type fixnum
-    :documentation "Total pool objects created")
-   (pool-grow-requests
-    :initform 0
-    :accessor pool-grow-requests
-    :type fixnum
-    :documentation "Pool Grow Request pending Action")
-   (pool-grow-lock
-    :initform (bordeaux-threads:make-lock "Pool Grow Lock")
-    :reader pool-grow-lock))
-  (:documentation "A memcached connection pool object"))
-
-
-(defmethod print-object ((mcp memcache-connection-pool) stream)
-  (format stream "#<~S Capacity:~d, Currently in use:~d>"
-	  (type-of mcp)
-	  (when (slot-boundp mcp 'max-capacity) (max-capacity mcp))
-	  (when (slot-boundp mcp 'currently-in-use) (currently-in-use mcp))))
-
-
-(defun mc-put-in-pool (conn &key (memcache *memcache*))
-  (bordeaux-threads:with-lock-held ((pool-lock (pool memcache)))
-    (enqueue (pool (pool memcache)) conn)
-    (decf (currently-in-use (pool memcache)))))
-
-
-(defun mc-get-from-pool (&key (memcache *memcache*))
-  "Returns a pool object from pool."
-  (let (pool-object (state t))
-    (bordeaux-threads:with-lock-held ((pool-lock (pool memcache)))
-      (if (queue-empty-p (pool (pool memcache)))
-	  (setf state nil)
-	  (progn (incf (currently-in-use (pool memcache)))
-		 (incf (total-uses (pool memcache)))
-		 (setf pool-object (dequeue (pool (pool memcache)))))))
-    (if state
-	pool-object
-	(error 'memcache-pool-empty))))
-
-
-(defun mc-get-from-pool-with-try (&key (memcache *memcache*) (tries 5) (try-interval 1))
-  ""
-  (let ((tr 1))
-    (loop
-       (progn (when (> tr tries)
-		(return nil))
-	      (let ((conn (handler-case (mc-get-from-pool :memcache memcache)
-			    (memcache-pool-empty () nil))))
-		(if (not conn)
-		    (incf tr)
-		    (return conn)))))))
-
-
-(defun mc-pool-init (&key (memcache *memcache*))
-  "Cleans up the pool for this particular instance of memcache
-& reinits it with POOL-SIZE number of objects required by this pool"
-  (mc-pool-cleanup memcache)
-  (dotimes (i (pool-size memcache))
-    (mc-pool-grow-request memcache))
-  (mc-pool-grow memcache))
-
-
-(defun mc-make-pool-item (&key (memcache *memcache*))
-  (handler-case (usocket:socket-connect (ip memcache) (port memcache)
-					:element-type #-sbcl '(unsigned-byte 8) #+sbcl :default)
-    (usocket:socket-error () (error 'memcached-server-unreachable))
-    (error () (error 'cannot-make-pool-object))))
-
-
-(defun mc-pool-grow (memcache)
-  (let (grow-count pool-item-list)
-    (bordeaux-threads:with-lock-held ((pool-grow-lock (pool memcache)))
-      (setf grow-count (pool-grow-requests (pool memcache)))
-      (setf pool-item-list (remove nil (loop for x from 1 to grow-count
-					  collect (mc-make-pool-item :memcache memcache))))
-      (loop for x from 1 to (length pool-item-list)
-	 do (bordeaux-threads:with-lock-held ((pool-lock (pool memcache)))
-	      (enqueue (pool (pool memcache)) (pop pool-item-list))
-	      (incf (total-created (pool memcache)))
-	      (incf (current-size (pool memcache))))
-	 do (decf (pool-grow-requests (pool memcache)))))))
 
 
 
-
-(defun mc-destroy-pool-item (pool-item)
-  (ignore-errors (usocket:socket-close pool-item)))
-
-
-(defun mc-pool-grow-request (memcache)
-  (bordeaux-threads:with-lock-held ((pool-grow-lock (pool memcache)))
-    (if (> (max-capacity (pool memcache)) (+ (current-size (pool memcache))
-					     (pool-grow-requests (pool memcache))))
-	(incf (pool-grow-requests (pool memcache)))
-	(warn "CL-MC: Pool is at Capacity"))))
-
-
-(defun mc-chuck-from-pool (object memcache)
- #| (mc-destroy-pool-item object)
-  (bordeaux-threads:with-lock-held ((pool-lock (pool memcache)))
-    (decf (current-size (pool memcache))))
-  (loop while (mc-pool-grow-request memcache))
-  (mc-pool-grow memcache)|#
-  (mc-pool-init :memcache memcache))
-
-(defun mc-pool-cleanup (memcache)
-  (bordeaux-threads:with-lock-held ((pool-lock (pool memcache)))
-    (bordeaux-threads:with-lock-held ((pool-grow-lock (pool memcache)))
-      (loop
-	 when (queue-empty-p (pool (pool memcache)))
-	 do (return)
-	 else do (mc-destroy-pool-item (dequeue (pool (pool memcache)))))
-      (setf (current-size (pool memcache)) 0
-	    (currently-in-use (pool memcache)) 0
-	    (pool-grow-requests (pool memcache)) 0
-	    (total-created (pool memcache)) 0
-	    (total-uses (pool memcache)) 0))))
-
-
-
-
-
-(defmacro mc-with-pool-y/n (&body body)
-  "Macro to wrap the use-pool/dont-use-pool stuff and the cleanup
-around a body of actual action statements"
-  `(let (us)
-     (if use-pool
-	 (setf us (if *pool-get-trys?*
-		      (mc-get-from-pool-with-try :memcache cache)
-		      (mc-get-from-pool :memcache cache)))
-	 (setf us (mc-make-pool-item :memcache cache)))
-     (unwind-protect
-	  (when us
-	    (let ((s (usocket:socket-stream us)))
-	      (handler-case (progn ,@body)
-		(error (c) (when use-pool
-			     (mc-chuck-from-pool us cache))
-		       (error c)))))
+(defmacro mc-with-pool-y/n ((memcache use-pool) &body body)
+  (let ((us (gensym "US-")))
+    `(progn
        (if use-pool
-	   (mc-put-in-pool us :memcache cache)
-	   (ignore-errors (usocket:socket-close us))))))
+	   (setf ,us (pooler:fetch-from+ (pool memcache)))
+	   (setf ,us (new-memcache-connection memcache)))
+       (unwind-protect
+	    (when ,us
+	      (let ((s (usocket:socket-stream ,us)))
+		(handler-case (progn ,@body)
+		  (error (c) (setf use-pool nil)))))
+	 (if use-pool
+	     (pooler:return-to (pool memcache))
+	     (close-memcache-connection ,us))))))
+
+
+;; (defmacro mc-with-pool-y/n (&body body)
+;;   "Macro to wrap the use-pool/dont-use-pool stuff and the cleanup
+;; around a body of actual action statements"
+;;   `(let (us)
+;;      (if use-pool
+;; 	 (setf us (if *pool-get-trys?*
+;; 		      (mc-get-from-pool-with-try :memcache cache)
+;; 		      (mc-get-from-pool :memcache cache)))
+;; 	 (setf us (mc-make-pool-item :memcache cache)))
+;;      (unwind-protect
+;; 	  (when us
+;; 	    (let ((s (usocket:socket-stream us)))
+;; 	      (handler-case (progn ,@body)
+;; 		(error (c) (when use-pool
+;; 			     (mc-chuck-from-pool us cache))
+;; 		       (error c)))))
+;;        (if use-pool
+;; 	   (mc-put-in-pool us :memcache cache)
+;; 	   (ignore-errors (usocket:socket-close us))))))
 
 
 
 (defun mc-stats-raw (&key (cache *memcache*) (use-pool *use-pool*))
   "Returns Raw stats data from memcached server to be used by the mc-stats function"
-  (mc-with-pool-y/n
+  (mc-with-pool-y/n (cache use-pool)
     (with-output-to-string (str)
       (format s "stats~A" +crlf+)
       (force-output s)
@@ -373,57 +224,12 @@ around a body of actual action statements"
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;---------------------------------------------------------
-
-
 ;;;
 ;;;
 ;;; Memcached API functionality
 ;;;
 ;;;
-
-
-
-
-;;;
-;;; Statistics from the memcached server
-;;;
-
-;;; FIXME: Need to write methods to get good stats for different types types of caches
-
-(defun mc-stats (memcache &key (use-pool *use-pool*))
-  "Returns a struct of type memcache-stats which contains internal statistics from the
-memcached server instance.  Please refer to documentation of memcache-stats for detailed
-information about each slot"
-  (let* ((result (mc-stats-raw :cache memcache :use-pool use-pool))
-	 (l (split-sequence:split-sequence #\Return result))
-	 xx temp)
-    (setf temp (loop for x in l
-		  do (setf xx (split-sequence:split-sequence " " x :remove-empty-subseqs t :test #'string-equal))
-		  collect (list (second xx) (third xx))))
-    (make-memcache-stats
-     :pid (parse-integer (second (assoc "pid" temp :test #'string-equal)) :junk-allowed t)
-     :uptime (parse-integer (second (assoc "uptime" temp :test #'string-equal)) :junk-allowed t)
-     :time (parse-integer (second (assoc "time" temp :test #'string-equal)) :junk-allowed t)
-     :version (second (assoc "version" temp :test #'string-equal))
-     :rusage-user (second (assoc "rusage_user" temp :test #'string-equal))
-     :rusage-system (second (assoc "rusage_system" temp :test #'string-equal))
-     :curr-items (parse-integer (second (assoc "curr_items" temp :test #'string-equal)) :junk-allowed t)
-     :total-items (parse-integer (second (assoc "total_items" temp :test #'string-equal)) :junk-allowed t)
-     :bytes (parse-integer (second (assoc "bytes" temp :test #'string-equal)) :junk-allowed t)
-     :curr-connections (parse-integer (second (assoc "curr_connections" temp :test #'string-equal)) :junk-allowed t)
-     :total-connections (parse-integer (second (assoc "total_connections" temp :test #'string-equal)) :junk-allowed t)
-     :connection-structures (parse-integer (second (assoc "connection_structures" temp :test #'string-equal)) :junk-allowed t)
-     :cmd-get (parse-integer (second (assoc "cmd_get" temp :test #'string-equal)) :junk-allowed t)
-     :cmd-set (parse-integer (second (assoc "cmd_set" temp :test #'string-equal)) :junk-allowed t)
-     :get-hits (parse-integer (second (assoc "get_hits" temp :test #'string-equal)) :junk-allowed t)
-     :get-misses (parse-integer (second (assoc "get_misses" temp :test #'string-equal)) :junk-allowed t)
-     :evictions (parse-integer (second (assoc "evictions" temp :test #'string-equal)) :junk-allowed t)
-     :bytes-read (parse-integer (second (assoc "bytes_read" temp :test #'string-equal)) :junk-allowed t)
-     :bytes-written (parse-integer (second (assoc "bytes_written" temp :test #'string-equal)) :junk-allowed t)
-     :limit-maxbytes (parse-integer (second (assoc "limit_maxbytes" temp :test #'string-equal)) :junk-allowed t))))
-
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ;;; SET/ADD/REPLACE functionality
@@ -444,7 +250,7 @@ timeout => The time in seconds when this data expires.  0 is never expire."
   (unless (equal (array-element-type data) '(UNSIGNED-BYTE 8))
     (cl-mc-error "Data has to be a ARRAY with ELEMENT-TYPE of (UNSIGNED-BYTE 8)"))
   (let ((len (length data)))
-    (mc-with-pool-y/n
+    (mc-with-pool-y/n (cache use-pool)
       (write-string (case command
 		      (:set "set")
 		      (:add "add")
@@ -571,6 +377,47 @@ key is a string value is an integer"
       (remove #\Return l))))
 
 
+
+;;;
+;;; Statistics from the memcached server
+;;;
+
+;;; FIXME: Need to write methods to get good stats for different types types of caches
+
+(defun mc-stats (memcache &key (use-pool *use-pool*))
+  "Returns a struct of type memcache-stats which contains internal statistics from the
+memcached server instance.  Please refer to documentation of memcache-stats for detailed
+information about each slot"
+  (let* ((result (mc-stats-raw :cache memcache :use-pool use-pool))
+	 (l (split-sequence:split-sequence #\Return result))
+	 xx temp)
+    (setf temp (loop for x in l
+		  do (setf xx (split-sequence:split-sequence " " x :remove-empty-subseqs t :test #'string-equal))
+		  collect (list (second xx) (third xx))))
+    (make-memcache-stats
+     :pid (parse-integer (second (assoc "pid" temp :test #'string-equal)) :junk-allowed t)
+     :uptime (parse-integer (second (assoc "uptime" temp :test #'string-equal)) :junk-allowed t)
+     :time (parse-integer (second (assoc "time" temp :test #'string-equal)) :junk-allowed t)
+     :version (second (assoc "version" temp :test #'string-equal))
+     :rusage-user (second (assoc "rusage_user" temp :test #'string-equal))
+     :rusage-system (second (assoc "rusage_system" temp :test #'string-equal))
+     :curr-items (parse-integer (second (assoc "curr_items" temp :test #'string-equal)) :junk-allowed t)
+     :total-items (parse-integer (second (assoc "total_items" temp :test #'string-equal)) :junk-allowed t)
+     :bytes (parse-integer (second (assoc "bytes" temp :test #'string-equal)) :junk-allowed t)
+     :curr-connections (parse-integer (second (assoc "curr_connections" temp :test #'string-equal)) :junk-allowed t)
+     :total-connections (parse-integer (second (assoc "total_connections" temp :test #'string-equal)) :junk-allowed t)
+     :connection-structures (parse-integer (second (assoc "connection_structures" temp :test #'string-equal)) :junk-allowed t)
+     :cmd-get (parse-integer (second (assoc "cmd_get" temp :test #'string-equal)) :junk-allowed t)
+     :cmd-set (parse-integer (second (assoc "cmd_set" temp :test #'string-equal)) :junk-allowed t)
+     :get-hits (parse-integer (second (assoc "get_hits" temp :test #'string-equal)) :junk-allowed t)
+     :get-misses (parse-integer (second (assoc "get_misses" temp :test #'string-equal)) :junk-allowed t)
+     :evictions (parse-integer (second (assoc "evictions" temp :test #'string-equal)) :junk-allowed t)
+     :bytes-read (parse-integer (second (assoc "bytes_read" temp :test #'string-equal)) :junk-allowed t)
+     :bytes-written (parse-integer (second (assoc "bytes_written" temp :test #'string-equal)) :junk-allowed t)
+     :limit-maxbytes (parse-integer (second (assoc "limit_maxbytes" temp :test #'string-equal)) :junk-allowed t))))
+
+
+
 (defgeneric quick-stat (cache))
 
 (defmethod quick-stat ((cache memcache))
@@ -584,10 +431,4 @@ key is a string value is an integer"
 	    (mc-stats-get-misses s))))
 
 
-;;;--------------
-
-
-
-
-
-
+;;;EOF
