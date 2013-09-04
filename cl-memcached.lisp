@@ -206,11 +206,11 @@ response :
   (defmacro mc-make-command (command)
     (let ((mc-function (intern (string-upcase (concatenate 'string "mc-" (symbol-name command))))))
       `(export ',mc-function)
-      `(defmacro ,mc-function (key data &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*))
+      `(defmacro ,mc-function (key data &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
        `(let ((unsigned-byte-data (if (equal (array-element-type ,data) '(UNSIGNED-BYTE 8))
 				      ,data
 				      (flex:string-to-octets ,data :external-format ,external-format))))
-	  (mc-store ,key unsigned-byte-data :memcache ,memcache :command ,',command :timeout ,timeout :flags ,flags :noreply ,noreply)))))
+	  (mc-store ,key unsigned-byte-data :memcache ,memcache :command ,',command :timeout ,timeout :flags ,flags :noreply ,noreply :mc-use-pool ,mc-use-pool)))))
 )
 
 
@@ -224,12 +224,12 @@ response :
 ;;; "cas" is a check and set operation which means 'store this data but
 ;;;  only if no one else has updated since I last fetched it.'
 
-(defmacro mc-cas (key data cas-unique &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*))
+(defmacro mc-cas (key data cas-unique &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
   "Check And Set Operation : Store this data buy only if no one else has updated since I last fetched it"
   `(let ((unsigned-byte-data (if (equal (array-element-type ,data) '(UNSIGNED-BYTE 8))
 				 ,data
 				 (flex:string-to-octets ,data :external-format ,external-format))))
-     (mc-store ,key unsigned-byte-data :memcache ,memcache :command :cas :timeout ,timeout :flags ,flags :noreply ,noreply :cas-unique ,cas-unique)))
+     (mc-store ,key unsigned-byte-data :memcache ,memcache :command :cas :timeout ,timeout :flags ,flags :noreply ,noreply :cas-unique ,cas-unique :mc-use-pool ,mc-use-pool)))
 
 
 
@@ -276,7 +276,7 @@ response :
   (data-raw nil :type (array (UNSIGNED-BYTE 8)) :read-only t))
 
 
-(defun mr-data (response &key (external-format *default-encoding*))
+(defun mr-data (response &key (external-format *mc-default-encoding*))
   (flex:octets-to-string (mr-data-raw response) :external-format external-format))
 
 
@@ -290,7 +290,7 @@ response :
 	result)))
 
 
-(defmacro mc-get-value (key &key (memcache *memcache*) (mc-use-pool *mc-use-pool*) (external-format *default-encoding*))
+(defmacro mc-get-value (key &key (memcache *memcache*) (mc-use-pool *mc-use-pool*) (external-format *mc-default-encoding*))
   "A utility macro to query a key and return a external-format decoded string"
   `(mr-data (mc-get+ ,key :memcache ,memcache :mc-use-pool ,mc-use-pool) :external-format ,external-format))
 
