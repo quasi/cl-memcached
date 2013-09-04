@@ -8,16 +8,27 @@
 (defpackage #:cl-memcached
   (:use #:cl)
   (:export #:*memcache*
-	   #:memcache
+	   #:*mc-use-pool*
+	   #:*mc-default-encoding*
+	   #:make-memcache
 	   #:mc-store
+	   #:mc-cas
            #:mc-get
 	   #:mc-get+
+	   #:mc-get-value
+	   #:mr-key
+	   #:mr-flags
+	   #:mr-bytes
+	   #:mr-cas-unique
+	   #:mr-data-raw
+	   #:mr-data
 	   #:mc-del
 	   #:mc-incr
 	   #:mc-decr
+	   #:mc-touch
 	   #:mc-stats
-           #:make-memcache
-	   #:mc-server-check
-	   #:*use-pool*))
+	   #:mc-stats-alist
+	   #:mc-stats-summary
+	   ))
 
 

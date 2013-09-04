@@ -11,11 +11,8 @@
   :license "MIT"
   :depends-on (:usocket
 	       :split-sequence
-	       :bordeaux-threads
 	       :flexi-streams
 	       :pooler)
   :components ((:file "packages")
-	       (:file "util")
-	       (:file "compat")
 	       (:file "cl-memcached")))
 
