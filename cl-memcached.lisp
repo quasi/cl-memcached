@@ -103,7 +103,7 @@ format control and arguments."
 ;;; Helper Macros
 
 (defmacro mc-with-pool-y/n ((memcache use-pool stream) &body body)
-  (let ((conn (gensym "US-")))
+  (let ((conn (gensym "MC-")))
     `(let (,conn)
        (if ,use-pool
 	   (setf ,conn (pooler:fetch-from+ (mc-pool ,memcache)))
@@ -206,12 +206,12 @@ response :
   (defmacro mc-make-command (command)
     (let ((mc-function (intern (string-upcase (concatenate 'string "mc-" (symbol-name command))))))
       `(export ',mc-function)
-      `(defmacro ,mc-function (key data &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
-       `(let ((unsigned-byte-data (if (equal (array-element-type ,data) '(UNSIGNED-BYTE 8))
-				      ,data
-				      (flex:string-to-octets ,data :external-format ,external-format))))
-	  (mc-store ,key unsigned-byte-data :memcache ,memcache :command ,',command :timeout ,timeout :flags ,flags :noreply ,noreply :mc-use-pool ,mc-use-pool)))))
-)
+      `(defun ,mc-function (key data &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
+	 (let ((unsigned-byte-data (if (equal (array-element-type data) '(UNSIGNED-BYTE 8))
+				       data
+				       (flex:string-to-octets data :external-format external-format))))
+	   (mc-store key unsigned-byte-data :memcache memcache :command ,command :timeout timeout :flags flags :noreply noreply :mc-use-pool mc-use-pool)))))
+  )
 
 
 (mc-make-command :set)
@@ -224,12 +224,12 @@ response :
 ;;; "cas" is a check and set operation which means 'store this data but
 ;;;  only if no one else has updated since I last fetched it.'
 
-(defmacro mc-cas (key data cas-unique &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
+(defun mc-cas (key data cas-unique &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
   "Check And Set Operation : Store this data buy only if no one else has updated since I last fetched it"
-  `(let ((unsigned-byte-data (if (equal (array-element-type ,data) '(UNSIGNED-BYTE 8))
-				 ,data
-				 (flex:string-to-octets ,data :external-format ,external-format))))
-     (mc-store ,key unsigned-byte-data :memcache ,memcache :command :cas :timeout ,timeout :flags ,flags :noreply ,noreply :cas-unique ,cas-unique :mc-use-pool ,mc-use-pool)))
+  (let ((unsigned-byte-data (if (equal (array-element-type data) '(UNSIGNED-BYTE 8))
+				data
+				(flex:string-to-octets data :external-format external-format))))
+    (mc-store key unsigned-byte-data :memcache memcache :command :cas :timeout timeout :flags flags :noreply noreply :cas-unique cas-unique :mc-use-pool mc-use-pool)))
 
 
 
@@ -284,15 +284,16 @@ response :
   "Takes a key or a list of keys are returns a list of MEMCACHE-RESPONSE structures"
   (let* ((keys (if (listp key-or-list-of-keys) key-or-list-of-keys (list key-or-list-of-keys)))
 	 (result (loop for x in (mc-get keys :memcache memcache :mc-use-pool mc-use-pool)
+		    when x
 		    collect (make-memcache-response% (first x) (second x) (third x) (fourth x) (fifth x)))))
     (if (= (length result) 1)
 	(first result)
 	result)))
 
 
-(defmacro mc-get-value (key &key (memcache *memcache*) (mc-use-pool *mc-use-pool*) (external-format *mc-default-encoding*))
+(defun mc-get-value (key &key (memcache *memcache*) (mc-use-pool *mc-use-pool*) (external-format *mc-default-encoding*))
   "A utility macro to query a key and return a external-format decoded string"
-  `(mr-data (mc-get+ ,key :memcache ,memcache :mc-use-pool ,mc-use-pool) :external-format ,external-format))
+  (mr-data (mc-get+ key :memcache memcache :mc-use-pool mc-use-pool) :external-format external-format))
 
 
 
@@ -369,5 +370,17 @@ response :
     (loop for x in s
        do (format t "~%~A ~25T: ~A" (string-capitalize (substitute #\Space #\_ (first x))) (rest x)))))
 
+
+
+;;; quick tests
+
+(defun mc-quick-test (key data &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (progn
+    (if (eql (mc-set key data :memcache memcache :mc-use-pool mc-use-pool) 'STORED)
+	(format t "~%Success SET")
+	(format t "~%Fail SET"))
+    (if (= (length (mc-get-value key :memcache memcache :mc-use-pool mc-use-pool)) (length data))
+	(format t "~%Success GET")
+	(format t "~%Fail GET"))))
 
 ;;;EOF
