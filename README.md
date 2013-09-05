@@ -208,3 +208,6 @@ DEPENDENCIES:
 * flexi-streams http://weitz.de/flexi-streams/
 * pooler https://github.com/quasi/pooler
 
+Note :
+The http://common-lisp.net/project/cl-memcached/ is the homepage. But the version there is older and the documentation out of date. I have lost the creds, :-). Till I manage to set that right please ignore that one.
+
