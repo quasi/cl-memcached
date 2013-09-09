@@ -19,10 +19,12 @@
 (defvar *mc-use-pool* nil
   "Default value for the MC-USE-POOL keyword parameter in memcached functions")
 
-(defvar *mc-default-encoding* (flex:make-external-format :UTF-8)
+(defvar *mc-default-encoding* (babel:make-external-format :UTF-8)
   "Default encoding")
 
-;;; Utils
+(defvar +command-encoding+ (babel:make-external-format :ASCII))
+
+;;; Some constants
 (defconstant +crlf+
   (if (boundp '+crlf+)
       (symbol-value '+crlf+)
@@ -54,7 +56,7 @@
   (name "Memcache" :type simple-string :read-only t)
   (ip "127.0.0.1" :type simple-string :read-only t)
   (port 11211 :type fixnum :read-only t)
-  (pool-size 2 :type fixnum :read-only t)
+  (pool-size 20 :type fixnum :read-only t)
   pool)
 
 
@@ -70,8 +72,7 @@
 
 
 (defun new-memcache-connection (memcache)
-  (handler-case (usocket:socket-connect (mc-ip memcache) (mc-port memcache)
-					:element-type #-sbcl '(unsigned-byte 8) #+sbcl :default)
+  (handler-case (usocket:socket-connect (mc-ip memcache) (mc-port memcache) :element-type '(unsigned-byte 8))
     (error () (error 'memcached-server-unreachable))))
 
 (defun close-memcache-connection (connection)
@@ -118,17 +119,20 @@ format control and arguments."
 	     (close-memcache-connection ,conn))))))
 
 
-(defmacro mc-make-request (command-param-list stream)
-  `(progn
-     ,@(let (z)
-	    (loop for x in command-param-list
-	       do (push `(write-string ,x ,stream) z)
-	       do (push `(write-string " " ,stream) z))
-	    (nreverse z))
+(defun server-request (command-param-list &key cas-unique noreply)
+  (babel:string-to-octets
+   (with-output-to-string (str)
+     (loop for x in command-param-list
+	do (write-string x str)
+	do (write-char #\Space str))
+     (when cas-unique
+       (write-string (princ-to-string cas-unique) str)
+       (write-char #\Space str))
      (when noreply
-       (write-string "noreply") ,stream)
-     (write-string +crlf+ ,stream)
-     (force-output ,stream)))
+       (write-string "noreply" str))
+     (write-string +crlf+ str))
+    :encoding +command-encoding+))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -170,36 +174,24 @@ response :
     (cl-mc-error "Data has to be a ARRAY with ELEMENT-TYPE of (UNSIGNED-BYTE 8)"))
   (when (and cas-unique (not (eq command :cas)))
     (cl-mc-error "CAS-UNIQUE is only useed with the CAS command"))
-  (let ((len (length data)))
+  (let* ((len (length data))
+	 (server-command (case command
+			   (:set "set")
+			   (:add "add")
+			   (:replace "replace")
+			   (:append "append")
+			   (:prepend "prepend")
+			   (:cas "cas")
+			   (t (cl-mc-error "Unknown Command : ~a." command))))
+	 (command-list (list server-command key (princ-to-string flags) (princ-to-string timeout) (princ-to-string len))))
     (mc-with-pool-y/n (memcache mc-use-pool s)
-      (write-string (case command
-		      (:set "set")
-		      (:add "add")
-		      (:replace "replace")
-		      (:append "append")
-		      (:prepend "prepend")
-		      (:cas "cas")
-		      (t (cl-mc-error "Unknown Command : ~a." command))) s)
-      (write-char #\Space s)
-      (write-string key s)
-      (write-char #\Space s)
-      (write-string (princ-to-string flags) s)
-      (write-char #\Space s)
-      (write-string (princ-to-string timeout) s)
-      (write-char #\Space s)
-      (write-string (princ-to-string len) s)
-      (when cas-unique
-	(write-char #\Space s)
-	(write-string (princ-to-string cas-unique) s))
-      (when noreply
-	(write-string " noreply" s))
-      (write-string +crlf+ s)
+      (write-sequence (server-request command-list :cas-unique cas-unique :noreply noreply) s)
       (force-output s)
       (write-sequence data s)
-      (write-string +crlf+ s)
+      (write-sequence (babel:string-to-octets +crlf+) s)
       (force-output s)
       (unless noreply
-	(intern (remove #\Return (read-line s nil nil)))))))
+	(read-line-from-binary-stream s)))))
 
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -209,7 +201,7 @@ response :
       `(defun ,mc-function (key data &key (memcache *memcache*) (timeout 0) (flags 0) (noreply nil) (external-format *mc-default-encoding*) (mc-use-pool *mc-use-pool*))
 	 (let ((unsigned-byte-data (if (equal (array-element-type data) '(UNSIGNED-BYTE 8))
 				       data
-				       (flex:string-to-octets data :external-format external-format))))
+				       (babel:string-to-octets data :encoding external-format))))
 	   (mc-store key unsigned-byte-data :memcache memcache :command ,command :timeout timeout :flags flags :noreply noreply :mc-use-pool mc-use-pool)))))
   )
 
@@ -228,24 +220,37 @@ response :
   "Check And Set Operation : Store this data buy only if no one else has updated since I last fetched it"
   (let ((unsigned-byte-data (if (equal (array-element-type data) '(UNSIGNED-BYTE 8))
 				data
-				(flex:string-to-octets data :external-format external-format))))
+				(babel:string-to-octets data :encoding external-format))))
     (mc-store key unsigned-byte-data :memcache memcache :command :cas :timeout timeout :flags flags :noreply noreply :cas-unique cas-unique :mc-use-pool mc-use-pool)))
 
 
 
 ;;; GET 'key(s)' functionality
 
+;; code given by stassats over IRC
+(defun read-line-from-binary-stream (stream)
+  (with-output-to-string (str)
+    (loop named outer
+       for byte = (read-byte stream)
+       do (let ((char (code-char byte)))
+            (loop while (char= char #\Return)
+	       do (let ((next-char (code-char (read-byte stream))))
+                    (cond ((char= next-char #\Newline)
+                           (return-from outer))
+                          (t
+                           (write-char char str)
+                           (setf char next-char)))))
+            (write-char char str)))))
+
+
+
 (defun mc-get (keys-list &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (when (not (listp keys-list))
     (cl-mc-error "KEYS-LIST has to be a LIST of keys"))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-string "get " s)
-    (loop for key in keys-list
-       do (write-string key s)
-       do (write-char #\Space s))
-    (write-string +crlf+ s)
+    (write-sequence (server-request (append (list "get") keys-list)) s)
     (force-output s)
-    (loop for x = (read-line s nil nil)
+    (loop for x = (read-line-from-binary-stream s)
        until (search "END" x :test #'string-equal)
        collect (let* ((status-line (split-sequence:split-sequence #\Space x))
 		      (key (second status-line))
@@ -254,7 +259,7 @@ response :
 		      (cas-unique (fifth status-line))
 		      (seq (make-sequence '(vector (unsigned-byte 8)) bytes)))
 		 (read-sequence seq s)
-		 (read-line s nil nil)
+		 (read-line-from-binary-stream s)
 		 (list key flags bytes cas-unique seq)))))
 
 
@@ -277,7 +282,8 @@ response :
 
 
 (defun mr-data (response &key (external-format *mc-default-encoding*))
-  (flex:octets-to-string (mr-data-raw response) :external-format external-format))
+  (when (eq (type-of response) 'MEMCACHE-RESPONSE)
+    (babel:octets-to-string (mr-data-raw response) :encoding external-format)))
 
 
 (defun mc-get+ (key-or-list-of-keys &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
@@ -301,18 +307,20 @@ response :
 
 (defun mc-del (key &key (memcache *memcache*) (noreply nil) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (mc-make-request ("delete" key) s)
+    (write-sequence (server-request (list "delete" key)) s)
+    (force-output s)
     (unless noreply
-      (intern (remove #\Return (read-line s nil nil))))))
+      (read-line-from-binary-stream s))))
 
 
 ;;; INCR functionality
 
 (defun mc-incr (key &key (value 1) (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (mc-make-request ("incr" key (princ-to-string value)) s)
+    (write-sequence (server-request (list "incr" key (princ-to-string value))) s)
+    (force-output s)
     (unless noreply
-      (let ((l (remove #\Return (read-line s nil nil))))
+      (let ((l (read-line-from-binary-stream s)))
 	(if (string-equal l "NOT_FOUND")
 	    'NOT_FOUND
 	    (parse-integer l))))))
@@ -321,9 +329,10 @@ response :
 
 (defun mc-decr (key &key (value 1) (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (mc-make-request ("decr" key (princ-to-string value)) s)
+    (write-sequence (server-request (list "decr" key (princ-to-string value))) s)
+    (force-output s)
     (unless noreply
-      (let ((l (remove #\Return (read-line s nil nil))))
+      (let ((l (read-line-from-binary-stream s)))
 	(if (string-equal l "NOT_FOUND")
 	    'NOT_FOUND
 	    (parse-integer l))))))
@@ -335,37 +344,29 @@ response :
 
 (defun mc-touch (key expiry-time &key (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (mc-make-request ("touch" key (princ-to-string expiry-time)) s)
+    (write-sequence (server-request (list "touch" key (princ-to-string expiry-time))) s)
+    (force-output s)
     (unless noreply
-      (intern (remove #\Return (read-line s nil nil))))))
+      (read-line-from-binary-stream s))))
 
 ;;;
 ;;; Statistics from the MEMCACHED server
 ;;;
 
-(defun mc-stats (&key (memcache *memcache*) (noreply nil) (mc-use-pool *mc-use-pool*))
-  "Returns Raw stats data from memcached server to be used by the mc-stats function"
+(defun mc-stats (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Returns an ALIST of stats data from memcached server"
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (mc-make-request ("stats") s)
-    (with-output-to-string (str)
-      (loop for line = (copy-seq (read-line s))
-	 do (princ line str)
-	 until (search "END" line  :test #'string-equal)))))
+    (write-sequence (server-request (list "stats")) s)
+    (force-output s)
+    (loop for line = (read-line-from-binary-stream s)
+       collect (let ((param (split-sequence:split-sequence #\Space line)))
+		 (cons (second param) (third param)))
+       until (search "END" line  :test #'string-equal))))
 
-
-(defun mc-stats-alist (&key (memcache *memcache*))
-  "Returns a alist of the stats returned by the server"
-  (let* ((result (mc-stats :memcache memcache :mc-use-pool nil))
-	 (stats-list (split-sequence:split-sequence #\Return result)))
-    (remove-if #'null
-	       (loop for x in stats-list
-		  collect (let ((y (split-sequence:split-sequence " " x :remove-empty-subseqs t :test #'string-equal)))
-			    (cons (second y) (third y))))
-	       :key #'first)))
 
 
 (defun mc-stats-summary (&key (memcache *memcache*))
-  (let ((s (mc-stats-alist :memcache memcache)))
+  (let ((s (mc-stats :memcache memcache)))
     (format t "Memcached Server Stats~%----------------------")
     (loop for x in s
        do (format t "~%~A ~25T: ~A" (string-capitalize (substitute #\Space #\_ (first x))) (rest x)))))
@@ -374,13 +375,14 @@ response :
 
 ;;; quick tests
 
-(defun mc-quick-test (key data &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
-  (progn
-    (if (eql (mc-set key data :memcache memcache :mc-use-pool mc-use-pool) 'STORED)
-	(format t "~%Success SET")
-	(format t "~%Fail SET"))
-    (if (= (length (mc-get-value key :memcache memcache :mc-use-pool mc-use-pool)) (length data))
-	(format t "~%Success GET")
-	(format t "~%Fail GET"))))
+(defun mc-quick-test (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (let ((key "test-key")
+	(data "test daaaaaaaaaaaaaaaataaaaaaaaaaaaa"))
+    (progn
+      (format t "~%~:[FAIL~;Success~] SET" (string= (mc-set key data :memcache memcache :mc-use-pool mc-use-pool) "STORED"))
+      (format t "~%~:[FAIL~;Success~] GET" (= (length (mc-get-value key :memcache memcache :mc-use-pool mc-use-pool)) (length data)))
+      (mc-set key "0" :memcache memcache :mc-use-pool mc-use-pool)
+      (format t "~%~:[FAIL~;Success~] INCR" (eq (mc-incr key  :memcache memcache :mc-use-pool mc-use-pool) 1))
+      (format t "~%~:[FAIL~;Success~] DECR" (eq (mc-decr key  :memcache memcache :mc-use-pool mc-use-pool) 0)))))
 
 ;;;EOF
