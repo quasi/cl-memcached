@@ -6,6 +6,8 @@ CL-MEMCACHED is a **simple** & **fast** library to interface with the [memcached
 According to the home page :
 > *memcached* is a high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.
 
+Tested on SBCL, CCL & CMUCL.
+
 -----
 Global variables
 
@@ -19,7 +21,7 @@ If this is true then the connection pool will be used. On SBCL this is about 3x 
 
 `*mc-default-encoding*`
 
-Flexi-streams external format. Default is UTF-8.
+Babel external format. Default is UTF-8.
 
 -----
 
@@ -171,29 +173,6 @@ CL-MEMCACHED> (mc-decr "t2")
 1
 1
 
-CL-MEMCACHED> (let ((baz (with-output-to-string (s) (dotimes (x 1024) (write-char #\x s)))))
-		(time (dotimes (x 10000) (mc-set "test" baz :mc-use-pool t))))
-Evaluation took:
-  1.028 seconds of real time
-  0.737557 seconds of total run time (0.529390 user, 0.208167 system)
-  [ Run times consist of 0.010 seconds GC time, and 0.728 seconds non-GC time. ]
-  71.79% CPU
-  2,975,291,709 processor cycles
-  23 page faults
-  31,663,088 bytes consed
-  
-NIL
-
-CL-MEMCACHED> (time (dotimes (x 10000) (mc-get-value "test" :mc-use-pool t)))
-Evaluation took:
-  1.306 seconds of real time
-  1.013390 seconds of total run time (0.841248 user, 0.172142 system)
-  [ Run times consist of 0.007 seconds GC time, and 1.007 seconds non-GC time. ]
-  77.57% CPU
-  3,778,912,460 processor cycles
-  83,530,256 bytes consed
-  
-NIL
 ```
 
 AUTHORS:
@@ -205,9 +184,29 @@ DEPENDENCIES:
 
 * usocket http://www.cliki.net/usockes
 * split-sequence http://www.cliki.net/SPLIT-SEQUENCE
-* flexi-streams http://weitz.de/flexi-streams/
+* babel http://common-lisp.net/project/babel/
 * pooler https://github.com/quasi/pooler
 
 Note :
 The http://common-lisp.net/project/cl-memcached/ is the homepage. But the version there is older and the documentation out of date. I have lost the creds, :-). Till I manage to set that right please ignore that one.
+
+Benchmark
+---------
+Host OS : OSX 10.8.4
+Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.
+```
+|-------------------+------------------+---------------+------------------+---------------|
+| implementation    | SET without pool | SET with pool | GET without pool | GET with pool |
+|-------------------+------------------+---------------+------------------+---------------|
+| SBCL 1.1.10       |            4.942 |         0.713 |            4.905 |         0.690 |
+| CCL 1.9-r15759    |            4.711 |         0.847 |            4.506 |         0.648 |
+| CMUCL 20D Unicode |            4.460 |         0.970 |            4.290 |         0.810 |
+|-------------------+------------------+---------------+------------------+---------------|
+| Dalli on Ruby 1.9 |                  |         0.957 |                  |         1.033 |
+|-------------------+------------------+---------------+------------------+---------------|
+```
+When we do not use the pool we make a new socket connection.
+
+The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.
+
 
