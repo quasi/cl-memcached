@@ -13,21 +13,25 @@
 	   #:make-memcache
 	   #:mc-store
 	   #:mc-cas
+	   #:mc-set
+	   #:mc-add
+	   #:mc-replace
+	   #:mc-append
+	   #:mc-prepend
            #:mc-get
 	   #:mc-get+
 	   #:mc-get-value
-	   #:mr-key
-	   #:mr-flags
-	   #:mr-bytes
-	   #:mr-cas-unique
-	   #:mr-data-raw
-	   #:mr-data
+	   #:mc-key
+	   #:mc-flags
+	   #:mc-bytes
+	   #:mc-cas-unique
+	   #:mc-data-raw
+	   #:mc-data
 	   #:mc-del
 	   #:mc-incr
 	   #:mc-decr
 	   #:mc-touch
 	   #:mc-stats
-	   #:mc-stats-alist
 	   #:mc-stats-summary
 	   ))
 

@@ -54,11 +54,11 @@ Returns a list of lists corresponding to responses to found keys in the keys-lis
 
 This is a wrapper around `mc-get`. It accepts 1 or many keys. Returns 1 or many `memcache-response` type structures containing all the pieces of the response.
 
-The `memcache-response` structure has these slots : `key`, `flags`, `bytes`, `cas-unique`, `data-raw`. All the slot accessors start with `mr-`
+The `memcache-response` structure has these slots : `key`, `flags`, `bytes`, `cas-unique`, `data-raw`. All the slot accessors start with `mc-`
 
 -----
 
-**mr-data** response &key (external-format `*mc-default-encoding*`)
+**mc-data** response &key (external-format `*mc-default-encoding*`)
 
 Takes the data-raw, which is in octets, and converts it to string using the external-format.
 
@@ -66,7 +66,7 @@ Takes the data-raw, which is in octets, and converts it to string using the exte
 
 **mc-get-value** key &key (memcache `*memcache*`) (mc-use-pool `*mc-use-pool*`) (external-format `*mc-default-encoding*`)
 
-A wrapper around `mr-data` and `mc-get+`. Give it a key and it gets a string value in return. Misuse is entierly the users responsibility. :)
+A wrapper around `mc-data` and `mc-get+`. Give it a key and it gets a string value in return. Misuse is entierly the users responsibility. :)
 
 -----
 
@@ -148,7 +148,7 @@ Slots with :INSTANCE allocation:
   DATA-RAW    = #(111 111 111 111 111 111 111 111 111 111 111 111 111 111 111 111 111..
 ; No value
 
-CL-MEMCACHED> (mr-data (mc-get+ "t1"))
+CL-MEMCACHED> (mc-data (mc-get+ "t1"))
 "oooooooooooooooooooooo"
 
 CL-MEMCACHED> (mc-get-value "t1")

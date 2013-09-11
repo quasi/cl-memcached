@@ -267,12 +267,12 @@ response :
 ;;; Response Structure
 
 (defstruct (memcache-response
-	     (:conc-name mr-)
+	     (:conc-name mc-)
 	     (:print-function
 	      (lambda (struct stream depth)
 		(declare (ignore depth))
 		(format stream "#<MEMCACHED-RESPONSE Key:~a Data-Length:~A >"
-			(mr-key struct) (mr-bytes struct))))
+			(mc-key struct) (mc-bytes struct))))
 	     (:constructor make-memcache-response% (key flags bytes cas-unique data-raw)))
   (key "" :type simple-string :read-only t)
   (flags "" :read-only t)
@@ -281,9 +281,9 @@ response :
   (data-raw nil :type (array (UNSIGNED-BYTE 8)) :read-only t))
 
 
-(defun mr-data (response &key (external-format *mc-default-encoding*))
+(defun mc-data (response &key (external-format *mc-default-encoding*))
   (when (eq (type-of response) 'MEMCACHE-RESPONSE)
-    (babel:octets-to-string (mr-data-raw response) :encoding external-format)))
+    (babel:octets-to-string (mc-data-raw response) :encoding external-format)))
 
 
 (defun mc-get+ (key-or-list-of-keys &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
@@ -299,7 +299,7 @@ response :
 
 (defun mc-get-value (key &key (memcache *memcache*) (mc-use-pool *mc-use-pool*) (external-format *mc-default-encoding*))
   "A utility macro to query a key and return a external-format decoded string"
-  (mr-data (mc-get+ key :memcache memcache :mc-use-pool mc-use-pool) :external-format external-format))
+  (mc-data (mc-get+ key :memcache memcache :mc-use-pool mc-use-pool) :external-format external-format))
 
 
 
