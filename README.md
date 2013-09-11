@@ -1,7 +1,7 @@
 CL-MEMCACHED
 ============
 
-CL-MEMCACHED is a **simple** & **fast** library to interface with the [memcached](http://www.danga.com/memcached/) object caching system.
+CL-MEMCACHED is a **simple**, **fast** & **thread-safe** library to interface with the [memcached](http://www.danga.com/memcached/) object caching system. It implements the Memcached TEXT protocol.
 
 According to the home page :
 > *memcached* is a high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.
@@ -205,7 +205,7 @@ Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.
 | Dalli on Ruby 1.9 |                  |         0.957 |                  |         1.033 |
 |-------------------+------------------+---------------+------------------+---------------|
 ```
-When we do not use the pool we make a new socket connection.
+When we do not use the pool we make a new socket connection every time.
 
 The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.
 
