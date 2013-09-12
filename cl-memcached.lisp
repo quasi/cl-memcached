@@ -107,7 +107,7 @@ format control and arguments."
   (let ((conn (gensym "MC-")))
     `(let (,conn)
        (if ,use-pool
-	   (setf ,conn (pooler:fetch-from+ (mc-pool ,memcache)))
+	   (setf ,conn (pooler:fetch-from (mc-pool ,memcache)))
 	   (setf ,conn (new-memcache-connection ,memcache)))
        (unwind-protect
 	    (when ,conn
