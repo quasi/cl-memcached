@@ -88,9 +88,27 @@ Decrements `key` by value. If `key` not found then will return `NOT_FOUND`.
 
 ------
 
-**mc-touch** key expiry-time &key (noreply nil) (memcache `*memcache*`) (mc-use-pool `*mc-use-pool*`)
+**mc-touch** key expiry-time &key ( *noreply* nil ) ( *memcache* `*memcache*` ) ( *mc-use-pool* `*mc-use-pool*` )
 
 Change expiry time of `key`.
+
+-------
+
+**mc-flush-all** &key ( *delay* 0 ) ( *noreply* nil) ( *memcache* `*memcache*` ) ( *mc-use-pool* `*mc-use-pool*` )
+
+expires all the current keys.
+
+-------
+
+**mc-version** &key  ( *memcache* `*memcache*` ) ( *mc-use-pool* `*mc-use-pool*` )
+
+Returns a text string with the version of the memcached server
+
+-------
+
+**mc-verbosity** &key ( *level* 1 ) ( *noreply* nil) ( *memcache* `*memcache*` ) ( *mc-use-pool* `*mc-use-pool*` )
+
+Sets the verbosity level of the logging output
 
 -------
 
