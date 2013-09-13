@@ -31,6 +31,9 @@
 	   #:mc-incr
 	   #:mc-decr
 	   #:mc-touch
+	   #:mc-flush-all
+	   #:mc-version
+	   #:mc-verbosity
 	   #:mc-stats
 	   #:mc-stats-summary
 	   ))

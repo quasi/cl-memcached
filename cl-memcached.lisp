@@ -104,17 +104,19 @@ format control and arguments."
 ;;; Helper Macros
 
 (defmacro mc-with-pool-y/n ((memcache use-pool stream) &body body)
-  (let ((conn (gensym "MC-")))
-    `(let (,conn)
-       (if ,use-pool
+  (let ((conn (gensym "MC-"))
+	(up (gensym "MC-")))
+    `(let ((,up ,use-pool)
+	   ,conn)
+       (if ,up
 	   (setf ,conn (pooler:fetch-from (mc-pool ,memcache)))
 	   (setf ,conn (new-memcache-connection ,memcache)))
        (unwind-protect
 	    (when ,conn
 	      (let ((,stream (usocket:socket-stream ,conn)))
 		(handler-case (progn ,@body)
-		  (error () (setf ,use-pool nil)))))
-	 (if ,use-pool
+		  (error () (setf ,up nil)))))
+	 (if ,up
 	     (pooler:return-to (mc-pool ,memcache) ,conn)
 	     (close-memcache-connection ,conn))))))
 
@@ -305,9 +307,9 @@ response :
 
 ;;; DELETE functionality
 
-(defun mc-del (key &key (memcache *memcache*) (noreply nil) (mc-use-pool *mc-use-pool*))
+(defun mc-del (key &key (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-sequence (server-request (list "delete" key)) s)
+    (write-sequence (server-request (list "delete" key) :noreply noreply) s)
     (force-output s)
     (unless noreply
       (read-line-from-binary-stream s))))
@@ -317,7 +319,7 @@ response :
 
 (defun mc-incr (key &key (value 1) (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-sequence (server-request (list "incr" key (princ-to-string value))) s)
+    (write-sequence (server-request (list "incr" key (princ-to-string value)) :noreply noreply) s)
     (force-output s)
     (unless noreply
       (let ((l (read-line-from-binary-stream s)))
@@ -329,7 +331,7 @@ response :
 
 (defun mc-decr (key &key (value 1) (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-sequence (server-request (list "decr" key (princ-to-string value))) s)
+    (write-sequence (server-request (list "decr" key (princ-to-string value)) :noreply noreply) s)
     (force-output s)
     (unless noreply
       (let ((l (read-line-from-binary-stream s)))
@@ -344,10 +346,40 @@ response :
 
 (defun mc-touch (key expiry-time &key (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-sequence (server-request (list "touch" key (princ-to-string expiry-time))) s)
+    (write-sequence (server-request (list "touch" key (princ-to-string expiry-time)) :noreply noreply) s)
     (force-output s)
     (unless noreply
       (read-line-from-binary-stream s))))
+
+
+;;; FLUSH_ALL
+
+(defun mc-flush-all (&key (delay 0) (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (mc-with-pool-y/n (memcache mc-use-pool s)
+    (write-sequence (server-request (list "flush_all" (princ-to-string delay)) :noreply noreply) s)
+    (force-output s)
+    (unless noreply
+      (read-line-from-binary-stream s))))
+
+
+;;; VERSION
+
+(defun mc-version (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (mc-with-pool-y/n (memcache mc-use-pool s)
+    (write-sequence (server-request (list "version")) s)
+    (force-output s)
+    (read-line-from-binary-stream s)))
+
+
+;;; VERBOSITY (of loggin output)
+
+(defun mc-verbosity (&key (level 1) (noreply nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (mc-with-pool-y/n (memcache mc-use-pool s)
+    (write-sequence (server-request (list "verbosity" (princ-to-string level)) :noreply noreply) s)
+    (force-output s)
+    (unless noreply
+      (read-line-from-binary-stream s))))
+
 
 ;;;
 ;;; Statistics from the MEMCACHED server
