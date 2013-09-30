@@ -13,7 +13,7 @@ Global variables
 
 `*memcache*`
 
-Most command have this as a fallback binding. Useful if we are only using one cache or if we want to bind it to a cache and then use it multiple places.
+Most commands have this as a fallback binding. Useful if we are only using one cache or if we want to bind it to a cache and then use it multiple places.
 
 `*mc-use-pool*`
 
@@ -21,13 +21,13 @@ If this is true then the connection pool will be used. On SBCL this is about 3x 
 
 `*mc-default-encoding*`
 
-Babel external format. Default is UTF-8.
+Babel is used for encodeing/decoding the data. Memcached expects octets. Default encoding is UTF-8.
 
 -----
 
 **make-memcache** &key (ip "127.0.0.1") (port 11211) (name "Memcache") (pool-size 2)
 
-Makes a memcached data-structure. We use this for further transactions. This has a inbuilt pool and know how to pool items.
+Makes a memcached data-structure. We use this for further transactions. This has a inbuilt pool and know how to make new pool items.
 
 -----
 
@@ -114,15 +114,9 @@ Sets the verbosity level of the logging output
 
 **mc-stats** &key (memcache `*memcache*`) (noreply nil) (mc-use-pool `*mc-use-pool*`)
 
-Returns raw stats response string. Pretty much useless.
+Returns a `alist` of the stats.
 
 ------
-
-**mc-stats-alist** &key (memcache `*memcache*`)
-
-Returns a Alist. A bit more usefull.
-
------
 
 **mc-stats-summary** &key (memcache `*memcache*`)
 
