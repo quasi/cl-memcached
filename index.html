@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Cl-memcached by quasi</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>Cl-memcached</h1>
+        <p>Fast, thread-safe interface to the Memcached object caching system.</p>
+
+        <p class="view"><a href="https://github.com/quasi/cl-memcached">View the Project on GitHub <small>quasi/cl-memcached</small></a></p>
+
+
+        <ul>
+          <li><a href="https://github.com/quasi/cl-memcached/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/quasi/cl-memcached/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/quasi/cl-memcached">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1>
+<a name="cl-memcached" class="anchor" href="#cl-memcached"><span class="octicon octicon-link"></span></a>CL-MEMCACHED</h1>
+
+<p>CL-MEMCACHED is a <strong>simple</strong>, <strong>fast</strong> &amp; <strong>thread-safe</strong> library to interface with the <a href="http://www.danga.com/memcached/">memcached</a> object caching system. It implements the Memcached TEXT protocol.</p>
+
+<p>According to the home page :</p>
+
+<blockquote>
+<p><em>memcached</em> is a high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.</p>
+</blockquote>
+
+<p>Tested on SBCL, CCL &amp; CMUCL.</p>
+
+<hr><p>Global variables</p>
+
+<p><code>*memcache*</code></p>
+
+<p>Most commands have this as a fallback binding. Useful if we are only using one cache or if we want to bind it to a cache and then use it multiple places.</p>
+
+<p><code>*mc-use-pool*</code></p>
+
+<p>If this is true then the connection pool will be used. On SBCL this is about 3x faster.</p>
+
+<p><code>*mc-default-encoding*</code></p>
+
+<p>Babel is used for encodeing/decoding the data. Memcached expects octets. Default encoding is UTF-8.</p>
+
+<hr><p><strong>make-memcache</strong> &amp;key (ip "127.0.0.1") (port 11211) (name "Memcache") (pool-size 2)</p>
+
+<p>Makes a memcached data-structure. We use this for further transactions. This has a inbuilt pool and know how to make new pool items.</p>
+
+<hr><p><strong>mc-set</strong> key data &amp;key (memcache <code>*memcache*</code>) (timeout 0) (flags 0) (noreply nil) (cas-unique nil) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>Stores <code>data</code> for the <code>key</code> in the <code>memcache</code>. The parameters have same value as the memcached server commands.
+We have similar <strong>mc-add</strong>, <strong>mc-replace</strong>, <strong>mc-append</strong>, <strong>mc-prepend</strong> functions available.</p>
+
+<hr><p><strong>mc-cas</strong> key data cas-unique &amp;key (memcache <code>*memcache*</code>) (timeout 0) (flags 0) (noreply nil) (external-format <code>*mc-default-encoding*</code>) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>This is a Check &amp; Store operation.</p>
+
+<hr><p><strong>mc-get</strong> keys-list &amp;key (memcache <code>*memcache*</code>) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>Returns a list of lists corresponding to responses to found keys in the keys-list.</p>
+
+<hr><p><strong>mc-get+</strong> key-or-list-of-keys &amp;key (memcache <code>*memcache*</code>) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>This is a wrapper around <code>mc-get</code>. It accepts 1 or many keys. Returns 1 or many <code>memcache-response</code> type structures containing all the pieces of the response.</p>
+
+<p>The <code>memcache-response</code> structure has these slots : <code>key</code>, <code>flags</code>, <code>bytes</code>, <code>cas-unique</code>, <code>data-raw</code>. All the slot accessors start with <code>mc-</code></p>
+
+<hr><p><strong>mc-data</strong> response &amp;key (external-format <code>*mc-default-encoding*</code>)</p>
+
+<p>Takes the data-raw, which is in octets, and converts it to string using the external-format.</p>
+
+<hr><p><strong>mc-get-value</strong> key &amp;key (memcache <code>*memcache*</code>) (mc-use-pool <code>*mc-use-pool*</code>) (external-format <code>*mc-default-encoding*</code>)</p>
+
+<p>A wrapper around <code>mc-data</code> and <code>mc-get+</code>. Give it a key and it gets a string value in return. Misuse is entierly the users responsibility. :)</p>
+
+<hr><p><strong>mc-del</strong> key &amp;key (memcache <code>*memcache*</code>) (noreply nil) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>Deletes <code>key</code> from the cache.</p>
+
+<hr><p><strong>mc-incr</strong> key &amp;key (value 1) (noreply nil) (memcache <code>*memcache*</code>) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>Increments <code>key</code> in place by value. If <code>key</code> not found then will return <code>NOT_FOUND</code>.</p>
+
+<hr><p><strong>mc-decr</strong> key &amp;key (value 1) (noreply nil) (memcache <code>*memcache*</code>) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>Decrements <code>key</code> by value. If <code>key</code> not found then will return <code>NOT_FOUND</code>.</p>
+
+<hr><p><strong>mc-touch</strong> key expiry-time &amp;key ( <em>noreply</em> nil ) ( <em>memcache</em> <code>*memcache*</code> ) ( <em>mc-use-pool</em> <code>*mc-use-pool*</code> )</p>
+
+<p>Change expiry time of <code>key</code>.</p>
+
+<hr><p><strong>mc-flush-all</strong> &amp;key ( <em>delay</em> 0 ) ( <em>noreply</em> nil) ( <em>memcache</em> <code>*memcache*</code> ) ( <em>mc-use-pool</em> <code>*mc-use-pool*</code> )</p>
+
+<p>expires all the current keys.</p>
+
+<hr><p><strong>mc-version</strong> &amp;key  ( <em>memcache</em> <code>*memcache*</code> ) ( <em>mc-use-pool</em> <code>*mc-use-pool*</code> )</p>
+
+<p>Returns a text string with the version of the memcached server</p>
+
+<hr><p><strong>mc-verbosity</strong> &amp;key ( <em>level</em> 1 ) ( <em>noreply</em> nil) ( <em>memcache</em> <code>*memcache*</code> ) ( <em>mc-use-pool</em> <code>*mc-use-pool*</code> )</p>
+
+<p>Sets the verbosity level of the logging output</p>
+
+<hr><p><strong>mc-stats</strong> &amp;key (memcache <code>*memcache*</code>) (noreply nil) (mc-use-pool <code>*mc-use-pool*</code>)</p>
+
+<p>Returns a <code>alist</code> of the stats.</p>
+
+<hr><p><strong>mc-stats-summary</strong> &amp;key (memcache <code>*memcache*</code>)</p>
+
+<p>Prints all the details from the alist. ;) Not too hot, but hey.</p>
+
+<hr><p>Example Usage for testing.</p>
+
+<pre><code>CL-USER&gt; (require 'cl-memcached)
+NIL
+
+CL-MEMCACHED&gt; (in-package :cl-memcached)
+#&lt;PACKAGE "CL-MEMCACHED"&gt;
+
+CL-MEMCACHED&gt; (setf *memcache* (make-memcache))
+#&lt;MEMCACHED-SERVER Name:Memcache IP:127.0.0.1 Port:11211 &gt;
+
+CL-MEMCACHED&gt; (mc-quick-test "foo" "bar")
+Success SET
+Success GET
+NIL
+
+CL-MEMCACHED&gt; (mc-set "t1" "oooooooooooooooooooooo")
+STORED
+:INTERNAL
+
+CL-MEMCACHED&gt; (mc-get+ "t1")
+#&lt;MEMCACHED-RESPONSE Key:t1 Data-Length:22 &gt;
+
+CL-MEMCACHED&gt; (describe *)
+#&lt;MEMCACHED-RESPONSE Key:t1 Data-Length:22 &gt;
+  [structure-object]
+
+Slots with :INSTANCE allocation:
+  KEY         = "t1"
+  FLAGS       = "0"
+  BYTES       = 22
+  CAS-UNIQUE  = NIL
+  DATA-RAW    = #(111 111 111 111 111 111 111 111 111 111 111 111 111 111 111 111 111..
+; No value
+
+CL-MEMCACHED&gt; (mc-data (mc-get+ "t1"))
+"oooooooooooooooooooooo"
+
+CL-MEMCACHED&gt; (mc-get-value "t1")
+"oooooooooooooooooooooo"
+
+CL-MEMCACHED&gt; (mc-set "t2" "0")
+STORED
+:INTERNAL
+
+CL-MEMCACHED&gt; (mc-incr "t3")
+NOT_FOUND
+
+CL-MEMCACHED&gt; (mc-incr "t2")
+1
+1
+
+CL-MEMCACHED&gt; (mc-incr "t2")
+2
+1
+
+CL-MEMCACHED&gt; (mc-decr "t2")
+1
+1
+
+</code></pre>
+
+<p>AUTHORS:</p>
+
+<p>Abhijit 'quasi' Rao <a href="mailto:quasi@quasilabs.in">quasi@quasilabs.in</a></p>
+
+<p>DEPENDENCIES:</p>
+
+<ul>
+<li>usocket <a href="http://www.cliki.net/usockes">http://www.cliki.net/usockes</a>
+</li>
+<li>split-sequence <a href="http://www.cliki.net/SPLIT-SEQUENCE">http://www.cliki.net/SPLIT-SEQUENCE</a>
+</li>
+<li>babel <a href="http://common-lisp.net/project/babel/">http://common-lisp.net/project/babel/</a>
+</li>
+<li>pooler <a href="https://github.com/quasi/pooler">https://github.com/quasi/pooler</a>
+</li>
+</ul><p>Note :
+The <a href="http://common-lisp.net/project/cl-memcached/">http://common-lisp.net/project/cl-memcached/</a> is the homepage. But the version there is older and the documentation out of date. I have lost the creds, :-). Till I manage to set that right please ignore that one.</p>
+
+<h2>
+<a name="benchmark" class="anchor" href="#benchmark"><span class="octicon octicon-link"></span></a>Benchmark</h2>
+
+<p>Host OS : OSX 10.8.4
+Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.</p>
+
+<pre><code>|-------------------+------------------+---------------+------------------+---------------|
+| implementation    | SET without pool | SET with pool | GET without pool | GET with pool |
+|-------------------+------------------+---------------+------------------+---------------|
+| SBCL 1.1.10       |            4.942 |         0.713 |            4.905 |         0.690 |
+| CCL 1.9-r15759    |            4.711 |         0.847 |            4.506 |         0.648 |
+| CMUCL 20D Unicode |            4.460 |         0.970 |            4.290 |         0.810 |
+|-------------------+------------------+---------------+------------------+---------------|
+| Dalli on Ruby 1.9 |                  |         0.957 |                  |         1.033 |
+|-------------------+------------------+---------------+------------------+---------------|
+</code></pre>
+
+<p>When we do not use the pool we make a new socket connection every time.</p>
+
+<p>The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.</p>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/quasi">quasi</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <script src="javascripts/scale.fix.js"></script>
+    
+  </body>
+</html>
