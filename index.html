@@ -31,7 +31,7 @@
         <h1>
 <a name="cl-memcached" class="anchor" href="#cl-memcached"><span class="octicon octicon-link"></span></a>CL-MEMCACHED</h1>
 
-<p>CL-MEMCACHED is a <strong>simple</strong>, <strong>fast</strong> &amp; <strong>thread-safe</strong> library to interface with the <a href="http://www.danga.com/memcached/">memcached</a> object caching system. It implements the Memcached TEXT protocol.</p>
+<p>CL-MEMCACHED is a Simple, <strong>Fast</strong> &amp; <strong>Thread-Safe</strong> library to interface with the <a href="http://www.danga.com/memcached/">memcached</a> object caching system. It implements the Memcached TEXT protocol.</p>
 
 <p>According to the home page :</p>
 
@@ -208,22 +208,30 @@ The <a href="http://common-lisp.net/project/cl-memcached/">http://common-lisp.ne
 <p>Host OS : OSX 10.8.4
 Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.</p>
 
-<pre><code>|-------------------+------------------+---------------+------------------+---------------|
-| implementation    | SET without pool | SET with pool | GET without pool | GET with pool |
-|-------------------+------------------+---------------+------------------+---------------|
-| SBCL 1.1.10       |            4.942 |         0.713 |            4.905 |         0.690 |
-| CCL 1.9-r15759    |            4.711 |         0.847 |            4.506 |         0.648 |
-| CMUCL 20D Unicode |            4.460 |         0.970 |            4.290 |         0.810 |
-|-------------------+------------------+---------------+------------------+---------------|
-| Dalli on Ruby 1.9 |                  |         0.957 |                  |         1.033 |
-|-------------------+------------------+---------------+------------------+---------------|
-</code></pre>
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+<caption></caption>
+<colgroup><col align="left"></col><col align="right"></col><col align="right"></col><col align="left"></col><col align="left"></col>
+</colgroup>
+<thead>
+<tr><th scope="col">implementation</th><th scope="col">SET without pool</th><th scope="col">SET with pool</th><th scope="col">GET without pool</th><th scope="col">GET with pool</th></tr>
+</thead>
+<tbody>
+<tr><td>SBCL 1.1.10</td><td>4.942</td><td>0.713</td><td>4.905</td><td>0.690</td></tr>
+<tr><td>CCL 1.9-r15759</td><td>4.711</td><td>0.847</td><td>4.506</td><td>0.648</td></tr>
+<tr><td>CMUCL 20D Unicode</td><td>4.460</td><td>0.970</td><td>4.290</td><td>0.810</td></tr>
+</tbody>
+<tbody>
+<tr><td>Dalli on Ruby 1.9</td><td></td><td>0.957</td><td></td><td>1.033</td></tr>
+</tbody>
+</table>
+
 
 <p>When we do not use the pool we make a new socket connection every time.</p>
 
 <p>The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.</p>
       </section>
       <footer>
+	<p>Project by <a href="http://quasilabs.com/">quasiLabs</a></p>
         <p>This project is maintained by <a href="https://github.com/quasi">quasi</a></p>
         <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
       </footer>
