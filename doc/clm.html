@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html> 
+
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <title>CL-MEMCACHED</title>
+  <style type="text/css">
+  body {font-family:'lato', 'monaco','verdana','monospace'; font-size:12px; margin-left:0px; margin-right:0px;margin-top:0px;}
+  pre { padding: 5px; font-family:'courier new','monospace'; background-color: #eee;}
+  .code { padding:5px; background-color:#f0f0f0; font-family:'courier', 'monospace'; font-size:9pt;}
+  blockquote { font-family:'courier new', 'monospace', 'verdana'; font-size:10pt;}
+  h3, h4 { text-decoration: underline; }
+  a { text-decoration: none; }
+  a.noborder { border:0px }
+  a.noborder:hover { border:0px }  a.none { border:1px solid white; }
+  a.none { border:1px solid white; }
+  a.none:hover { border:1px solid white; }
+  a { border:1px solid white; }
+  a:hover   { border: 1px solid black; } 
+  a.noborder { border:0px }
+  a.noborder:hover { border:0px }
+  #cont { margin: 10px 20px;}
+  </style>
+</head>
+
+<body bgcolor=white>
+
+<div style="border:solid blue 0px;padding: 25px;background-color:pink; border-bottom:solid red 2px;">
+<h2> CL-MEMCACHED <small>- Common Lisp interface to the memcached object caching system.</small></h2>
+<div style="float:right;"><img src="mwlisp.png"></div>
+</div>
+
+<div id="cont">
+<br>&nbsp;<br><h3><a name=abstract class=none>Abstract</a></h3>
+
+<p>CL-MEMCACHED is a Simple, Fast, Thread-Safe library to interface with the <a href="http://www.danga.com/memcached/" >memcached</a> object caching system. It implements the Memcached TEXT protocol.
+<p>Tested on SBCL, CCL, CMUCL.</p>
+
+<br />
+<blockquote>
+<a href="http://www.danga.com/memcached/" >memcached</a> is a high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.
+<br /><br />
+<a href="http://www.danga.com/" >Danga</a> Interactive developed memcached to enhance the speed of <a href="http://livejournal.com" >LiveJournal.com</a>, a site which was already doing 20 million+ dynamic page views per day for 1 million users with a bunch of webservers and a bunch of database servers. memcached dropped the database load to almost nothing, yielding faster page load times for users, better resource utilization, and faster access to the databases on a memcache miss.
+</blockquote>
+
+<br />
+<p>The code comes with a MIT-style license so you can basically do with it whatever you want.
+
+<p><font color=red>Project page:</font> <a href="http://quasilabs.com/cl-memcached/">cl-memcached</a>. 
+
+<h3><a class=none name="lists">Lists</a></h3>
+<p>Please post issues on the github page.</p>
+
+
+<br>&nbsp;<br><h3><a class=none name="contents">Contents</a></h3>
+<ol>
+  <li><a href="#download">Download</a>
+  <li><a href="#dictionary">The CL-MEMCACHED dictionary</a>
+    <ol>
+      <li><a href="#*mc-default-encoding*"><code>*mc-default-encoding*</code></a>
+      <li><a href="#*mc-use-pool*"><code>*mc-use-pool*</code></a>
+      <li><a href="#*memcache*"><code>*memcache*</code></a>
+      <li><a href="#make-memcache"><code>make-memcache</code></a>
+      <li><a href="#mc-add"><code>mc-add</code></a>
+      <li><a href="#mc-append"><code>mc-append</code></a>
+      <li><a href="#mc-bytes"><code>mc-bytes</code></a>
+      <li><a href="#mc-cas"><code>mc-cas</code></a>
+      <li><a href="#mc-cas-unique"><code>mc-cas-unique</code></a>
+      <li><a href="#mc-data"><code>mc-data</code></a>
+      <li><a href="#mc-data-raw"><code>mc-data-raw</code></a>
+      <li><a href="#mc-decr"><code>mc-decr</code></a>
+      <li><a href="#mc-del"><code>mc-del</code></a>
+      <li><a href="#mc-flags"><code>mc-flags</code></a>
+      <li><a href="#mc-flush-all"><code>mc-flush-all</code></a>
+      <li><a href="#mc-get"><code>mc-get</code></a>
+      <li><a href="#mc-get+"><code>mc-get+</code></a>
+      <li><a href="#mc-get-value"><code>mc-get-value</code></a>
+      <li><a href="#mc-incr"><code>mc-incr</code></a>
+      <li><a href="#mc-key"><code>mc-key</code></a>
+      <li><a href="#mc-prepend"><code>mc-prepend</code></a>
+      <li><a href="#mc-replace"><code>mc-replace</code></a>
+      <li><a href="#mc-set"><code>mc-set</code></a>
+      <li><a href="#mc-stats"><code>mc-stats</code></a>
+      <li><a href="#mc-stats-summary"><code>mc-stats-summary</code></a>
+      <li><a href="#mc-store"><code>mc-store</code></a>
+      <li><a href="#mc-touch"><code>mc-touch</code></a>
+      <li><a href="#mc-verbosity"><code>mc-verbosity</code></a>
+      <li><a href="#mc-version"><code>mc-version</code></a>
+    </ol>
+  <li><a href="#ack">Acknowledgements</a>
+</ol>
+
+<br>&nbsp;<br><h3><a class=none name="download">Download</a></h3>
+
+CL-MEMCACHED together with this documentation can be downloaded from <a
+href="http://quasilabs.com/cl-memcached/">cl-memcached</a>. The
+current version is 1.0.0.
+<p><font color=red>Install using quicklisp</font> : <code>(ql:quickload 'cl-memcached)</code></p>
+
+<br>&nbsp;<br><h3><a class=none name="ack">Example Usage</a></h3>
+
+<pre><code>CL-USER&gt; (require 'cl-memcached)
+NIL
+
+CL-MEMCACHED&gt; (in-package :cl-memcached)
+#&lt;PACKAGE "CL-MEMCACHED"&gt;
+
+CL-MEMCACHED&gt; (setf *memcache* (make-memcache))
+#&lt;MEMCACHED-SERVER Name:Memcache IP:127.0.0.1 Port:11211 &gt;
+
+CL-MEMCACHED&gt; (mc-quick-test "foo" "bar")
+Success SET
+Success GET
+NIL
+
+CL-MEMCACHED&gt; (mc-set "t1" "oooooooooooooooooooooo")
+STORED
+:INTERNAL
+
+CL-MEMCACHED&gt; (mc-get+ "t1")
+#&lt;MEMCACHED-RESPONSE Key:t1 Data-Length:22 &gt;
+
+CL-MEMCACHED&gt; (describe *)
+#&lt;MEMCACHED-RESPONSE Key:t1 Data-Length:22 &gt;
+  [structure-object]
+
+Slots with :INSTANCE allocation:
+  KEY         = "t1"
+  FLAGS       = "0"
+  BYTES       = 22
+  CAS-UNIQUE  = NIL
+  DATA-RAW    = #(111 111 111 111 111 111 111 111 111 111 111 111 111 111 111 111 111..
+; No value
+
+CL-MEMCACHED&gt; (mc-data (mc-get+ "t1"))
+"oooooooooooooooooooooo"
+
+CL-MEMCACHED&gt; (mc-get-value "t1")
+"oooooooooooooooooooooo"
+
+CL-MEMCACHED&gt; (mc-set "t2" "0")
+STORED
+:INTERNAL
+
+CL-MEMCACHED&gt; (mc-incr "t3")
+NOT_FOUND
+
+CL-MEMCACHED&gt; (mc-incr "t2")
+1
+1
+
+CL-MEMCACHED&gt; (mc-incr "t2")
+2
+1
+
+CL-MEMCACHED&gt; (mc-decr "t2")
+1
+1
+
+</code></pre>
+
+
+<br>&nbsp;<br><h3><a class=none name="dictionary">The CL-MEMCACHED dictionary</a></h3>
+
+
+
+<!-- Entry for *MC-DEFAULT-ENCODING* -->
+
+<p><br>[Special variable]<br><a class=none name='*mc-default-encoding*'><b>*mc-default-encoding*</b></a>
+<blockquote><br>
+
+Default encoding
+
+</blockquote>
+
+<!-- End of entry for *MC-DEFAULT-ENCODING* -->
+
+
+<!-- Entry for *MC-USE-POOL* -->
+
+<p><br>[Special variable]<br><a class=none name='*mc-use-pool*'><b>*mc-use-pool*</b></a>
+<blockquote><br>
+
+Default value for the MC-USE-POOL keyword parameter in memcached functions
+
+</blockquote>
+
+<!-- End of entry for *MC-USE-POOL* -->
+
+
+<!-- Entry for *MEMCACHE* -->
+
+<p><br>[Special variable]<br><a class=none name='*memcache*'><b>*memcache*</b></a>
+<blockquote><br>
+
+Represents a particular Memcached server
+
+</blockquote>
+
+<!-- End of entry for *MEMCACHE* -->
+
+
+<!-- Entry for MAKE-MEMCACHE -->
+
+<p><br>[Function]<br><a class=none name='make-memcache'><b>make-memcache</b> <i><tt>&amp;key</tt> ip port name pool-size</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Creates an instance of class MEMCACHE which represents a memcached server
+
+</blockquote>
+
+<!-- End of entry for MAKE-MEMCACHE -->
+
+
+<!-- Entry for MC-ADD -->
+
+<p><br>[Function]<br><a class=none name='mc-add'><b>mc-add</b> <i>key data <tt>&amp;key</tt> memcache timeout flags noreply external-format mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-ADD -->
+
+
+<!-- Entry for MC-APPEND -->
+
+<p><br>[Function]<br><a class=none name='mc-append'><b>mc-append</b> <i>key data <tt>&amp;key</tt> memcache timeout flags noreply external-format mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-APPEND -->
+
+
+<!-- Entry for MC-BYTES -->
+
+<p><br>[Function]<br><a class=none name='mc-bytes'><b>mc-bytes</b> <i>instance</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Return whether debug-block represents elsewhere code.
+
+</blockquote>
+
+<!-- End of entry for MC-BYTES -->
+
+
+<!-- Entry for MC-CAS -->
+
+<p><br>[Function]<br><a class=none name='mc-cas'><b>mc-cas</b> <i>key data cas-unique <tt>&amp;key</tt> memcache timeout flags noreply external-format mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Check And Set Operation : Store this data buy only if no one else has updated since I last fetched it
+
+</blockquote>
+
+<!-- End of entry for MC-CAS -->
+
+
+<!-- Entry for MC-CAS-UNIQUE -->
+
+<p><br>[Function]<br><a class=none name='mc-cas-unique'><b>mc-cas-unique</b> <i>instance</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Return whether debug-block represents elsewhere code.
+
+</blockquote>
+
+<!-- End of entry for MC-CAS-UNIQUE -->
+
+
+<!-- Entry for MC-DATA -->
+
+<p><br>[Function]<br><a class=none name='mc-data'><b>mc-data</b> <i>response <tt>&amp;key</tt> external-format</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-DATA -->
+
+
+<!-- Entry for MC-DATA-RAW -->
+
+<p><br>[Function]<br><a class=none name='mc-data-raw'><b>mc-data-raw</b> <i>instance</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Return whether debug-block represents elsewhere code.
+
+</blockquote>
+
+<!-- End of entry for MC-DATA-RAW -->
+
+
+<!-- Entry for MC-DECR -->
+
+<p><br>[Function]<br><a class=none name='mc-decr'><b>mc-decr</b> <i>key <tt>&amp;key</tt> value noreply memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-DECR -->
+
+
+<!-- Entry for MC-DEL -->
+
+<p><br>[Function]<br><a class=none name='mc-del'><b>mc-del</b> <i>key <tt>&amp;key</tt> noreply memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-DEL -->
+
+
+<!-- Entry for MC-FLAGS -->
+
+<p><br>[Function]<br><a class=none name='mc-flags'><b>mc-flags</b> <i>instance</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Return whether debug-block represents elsewhere code.
+
+</blockquote>
+
+<!-- End of entry for MC-FLAGS -->
+
+
+<!-- Entry for MC-FLUSH-ALL -->
+
+<p><br>[Function]<br><a class=none name='mc-flush-all'><b>mc-flush-all</b> <i><tt>&amp;key</tt> delay noreply memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-FLUSH-ALL -->
+
+
+<!-- Entry for MC-GET -->
+
+<p><br>[Function]<br><a class=none name='mc-get'><b>mc-get</b> <i>keys-list <tt>&amp;key</tt> memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-GET -->
+
+
+<!-- Entry for MC-GET+ -->
+
+<p><br>[Function]<br><a class=none name='mc-get+'><b>mc-get+</b> <i>key-or-list-of-keys <tt>&amp;key</tt> memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Takes a key or a list of keys are returns a list of MEMCACHE-RESPONSE structures
+
+</blockquote>
+
+<!-- End of entry for MC-GET+ -->
+
+
+<!-- Entry for MC-GET-VALUE -->
+
+<p><br>[Function]<br><a class=none name='mc-get-value'><b>mc-get-value</b> <i>key <tt>&amp;key</tt> memcache mc-use-pool external-format</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+A utility macro to query a key and return a external-format decoded string
+
+</blockquote>
+
+<!-- End of entry for MC-GET-VALUE -->
+
+
+<!-- Entry for MC-INCR -->
+
+<p><br>[Function]<br><a class=none name='mc-incr'><b>mc-incr</b> <i>key <tt>&amp;key</tt> value noreply memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-INCR -->
+
+
+<!-- Entry for MC-KEY -->
+
+<p><br>[Function]<br><a class=none name='mc-key'><b>mc-key</b> <i>instance</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Return whether debug-block represents elsewhere code.
+
+</blockquote>
+
+<!-- End of entry for MC-KEY -->
+
+
+<!-- Entry for MC-PREPEND -->
+
+<p><br>[Function]<br><a class=none name='mc-prepend'><b>mc-prepend</b> <i>key data <tt>&amp;key</tt> memcache timeout flags noreply external-format mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-PREPEND -->
+
+
+<!-- Entry for MC-REPLACE -->
+
+<p><br>[Function]<br><a class=none name='mc-replace'><b>mc-replace</b> <i>key data <tt>&amp;key</tt> memcache timeout flags noreply external-format mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-REPLACE -->
+
+
+<!-- Entry for MC-SET -->
+
+<p><br>[Function]<br><a class=none name='mc-set'><b>mc-set</b> <i>key data <tt>&amp;key</tt> memcache timeout flags noreply external-format mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-SET -->
+
+
+<!-- Entry for MC-STATS -->
+
+<p><br>[Function]<br><a class=none name='mc-stats'><b>mc-stats</b> <i><tt>&amp;key</tt> memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Returns an ALIST of stats data from memcached server
+
+</blockquote>
+
+<!-- End of entry for MC-STATS -->
+
+
+<!-- Entry for MC-STATS-SUMMARY -->
+
+<p><br>[Function]<br><a class=none name='mc-stats-summary'><b>mc-stats-summary</b> <i><tt>&amp;key</tt> memcache</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-STATS-SUMMARY -->
+
+
+<!-- Entry for MC-STORE -->
+
+<p><br>[Function]<br><a class=none name='mc-store'><b>mc-store</b> <i>key data <tt>&amp;key</tt> memcache command timeout flags noreply cas-unique mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+Stores data in the memcached server using the :command command.
+KEY =&gt; KEY by which the DATA is stored. this is of type SIMPLE-STRING
+DATA =&gt; DATA to be stored into the cache. DATA has to be a sequence of TYPE (UNSIGNED-BYTE 8).
+MEMCACHE =&gt; A structure representing the MEMCACHE we want to use.
+command =&gt; The storage command we want to use.  There are 5 available : set, add, replace, append &amp; prepend.
+timeout =&gt; The time in seconds when this data expires.  0 is never expire.
+flags =&gt;
+noreply =&gt; server does not send a reply
+mc-use-pool =&gt; use connection from pool (much faster for load)
+
+response :
+- &#039;STOREDrn&#039;, to indicate success.
+- &#039;NOT_STOREDrn&#039; to indicate the data was not stored, but not
+   because of an error. This normally means that the
+   condition for an &#039;add&#039; or a &#039;replace&#039; command wasn&#039;t met.
+- &#039;EXISTSrn&#039; to indicate that the item you are trying to store with
+   a &#039;cas&#039; command has been modified since you last fetched it.
+- &#039;NOT_FOUNDrn&#039; to indicate that the item you are trying to store
+   with a &#039;cas&#039; command did not exist.
+
+
+</blockquote>
+
+<!-- End of entry for MC-STORE -->
+
+
+<!-- Entry for MC-TOUCH -->
+
+<p><br>[Function]<br><a class=none name='mc-touch'><b>mc-touch</b> <i>key expiry-time <tt>&amp;key</tt> noreply memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-TOUCH -->
+
+
+<!-- Entry for MC-VERBOSITY -->
+
+<p><br>[Function]<br><a class=none name='mc-verbosity'><b>mc-verbosity</b> <i><tt>&amp;key</tt> level noreply memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-VERBOSITY -->
+
+
+<!-- Entry for MC-VERSION -->
+
+<p><br>[Function]<br><a class=none name='mc-version'><b>mc-version</b> <i><tt>&amp;key</tt> memcache mc-use-pool</i> =&gt; <i>result</i></a>
+<blockquote><br>
+
+
+
+</blockquote>
+
+<!-- End of entry for MC-VERSION -->
+
+<br>&nbsp;<br><h3><a class=none name="#benchmark">Benchmark</a></h3>
+
+<p>Host OS : OSX 10.8.4
+Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.</p>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+<caption></caption>
+<colgroup><col align="left"></col><col align="right"></col><col align="right"></col><col align="left"></col><col align="left"></col>
+</colgroup>
+<thead>
+<tr><th scope="col">implementation</th><th scope="col">SET without pool</th><th scope="col">SET with pool</th><th scope="col">GET without pool</th><th scope="col">GET with pool</th></tr>
+</thead>
+<tbody>
+<tr><td>SBCL 1.1.10</td><td>4.942</td><td>0.713</td><td>4.905</td><td>0.690</td></tr>
+<tr><td>CCL 1.9-r15759</td><td>4.711</td><td>0.847</td><td>4.506</td><td>0.648</td></tr>
+<tr><td>CMUCL 20D Unicode</td><td>4.460</td><td>0.970</td><td>4.290</td><td>0.810</td></tr>
+</tbody>
+<tbody>
+<tr><td>Dalli on Ruby 1.9</td><td></td><td>0.957</td><td></td><td>1.033</td></tr>
+</tbody>
+</table>
+
+<p>When we do not use the pool we make a new socket connection every time.
+<br /><br />
+The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.</p>
+
+<br>&nbsp;<br><h3><a class=none name="ack">Author</a></h3>
+<p>Abhijit 'quasi' Rao</p>
+<p>
+This documentation was prepared with <a href="http://weitz.de/documentation-template/">DOCUMENTATION-TEMPLATE</a>.
+</p>
+<p>
+$Header: /usr/local/cvsrep/documentation-template/output.lisp,v 1.18 2013-01-11 13:45:29 edi Exp $
+<p><a href="http://quasilabs.com/">quasiLabs</a>
+</div>
+</body>
+</html>
