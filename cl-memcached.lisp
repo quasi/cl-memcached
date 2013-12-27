@@ -253,7 +253,7 @@ response :
     (write-sequence (server-request (append (list "get") keys-list)) s)
     (force-output s)
     (loop for x = (read-line-from-binary-stream s)
-       until (search "END" x :test #'string-equal)
+       until (string-equal "END" x)
        collect (let* ((status-line (split-sequence:split-sequence #\Space x))
 		      (key (second status-line))
 		      (flags (third status-line))
@@ -393,7 +393,7 @@ response :
     (loop for line = (read-line-from-binary-stream s)
        collect (let ((param (split-sequence:split-sequence #\Space line)))
 		 (cons (second param) (third param)))
-       until (search "END" line  :test #'string-equal))))
+       until (string-equal "END" line))))
 
 
 
