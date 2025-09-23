@@ -36,6 +36,12 @@
 	   #:mc-verbosity
 	   #:mc-stats
 	   #:mc-stats-summary
+	   #:mc-gets
+	   #:mc-stats-items
+	   #:mc-stats-slabs
+	   #:mc-stats-sizes
+	   #:mc-gets+
+	   #:mc-gets-test
 	   ))
 
 

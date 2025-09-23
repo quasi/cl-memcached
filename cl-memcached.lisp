@@ -246,23 +246,29 @@ response :
 
 
 
-(defun mc-get (keys-list &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+(defun mc-get-internal (command keys-list &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (when (not (listp keys-list))
     (cl-mc-error "KEYS-LIST has to be a LIST of keys"))
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-sequence (server-request (append (list "get") keys-list)) s)
+    (write-sequence (server-request (append (list command) keys-list)) s)
     (force-output s)
     (loop for x = (read-line-from-binary-stream s)
        until (string-equal "END" x)
        collect (let* ((status-line (split-sequence:split-sequence #\Space x))
-		      (key (second status-line))
-		      (flags (third status-line))
-		      (bytes (parse-integer (fourth status-line)))
-		      (cas-unique (fifth status-line))
-		      (seq (make-sequence '(vector (unsigned-byte 8)) bytes)))
-		 (read-sequence seq s)
-		 (read-line-from-binary-stream s)
-		 (list key flags bytes cas-unique seq)))))
+                      (key (second status-line))
+                      (flags (third status-line))
+                      (bytes (parse-integer (fourth status-line)))
+                      (cas-unique (when (string-equal command "gets") (fifth status-line)))
+                      (seq (make-sequence '(vector (unsigned-byte 8)) bytes)))
+                 (read-sequence seq s)
+                 (read-line-from-binary-stream s)
+                 (list key flags bytes cas-unique seq)))))
+
+(defun mc-get (keys-list &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (mc-get-internal "get" keys-list :memcache memcache :mc-use-pool mc-use-pool))
+
+(defun mc-gets (keys-list &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (mc-get-internal "gets" keys-list :memcache memcache :mc-use-pool mc-use-pool))
 
 
 
@@ -294,7 +300,17 @@ response :
 	 (result (loop for x in (mc-get keys :memcache memcache :mc-use-pool mc-use-pool)
 		    when x
 		    collect (make-memcache-response% (first x) (second x) (third x) (fourth x) (fifth x)))))
-    (if (= (length result) 1)
+    (if (and (not (listp key-or-list-of-keys)) (= (length result) 1))
+        (first result)
+        result)))
+
+(defun mc-gets+ (key-or-list-of-keys &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Takes a key or a list of keys are returns a list of MEMCACHE-RESPONSE structures with CAS values"
+  (let* ((keys (if (listp key-or-list-of-keys) key-or-list-of-keys (list key-or-list-of-keys)))
+	 (result (loop for x in (mc-gets keys :memcache memcache :mc-use-pool mc-use-pool)
+		    when x
+		    collect (make-memcache-response% (first x) (second x) (third x) (fourth x) (fifth x)))))
+    (if (and (not (listp key-or-list-of-keys)) (= (length result) 1))
 	(first result)
 	result)))
 
@@ -385,15 +401,31 @@ response :
 ;;; Statistics from the MEMCACHED server
 ;;;
 
-(defun mc-stats (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
-  "Returns an ALIST of stats data from memcached server"
+(defun mc-stats-internal (command &key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Internal function to query memcached stats"
   (mc-with-pool-y/n (memcache mc-use-pool s)
-    (write-sequence (server-request (list "stats")) s)
+    (write-sequence (server-request (list command)) s)
     (force-output s)
     (loop for line = (read-line-from-binary-stream s)
+       while (not (string-equal "END" line))
        collect (let ((param (split-sequence:split-sequence #\Space line)))
-		 (cons (second param) (third param)))
-       until (string-equal "END" line))))
+                 (cons (second param) (third param))))))
+
+(defun mc-stats (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Returns an ALIST of general stats data from memcached server"
+  (mc-stats-internal "stats" :memcache memcache :mc-use-pool mc-use-pool))
+
+(defun mc-stats-items (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Returns an ALIST of stats items data from memcached server"
+  (mc-stats-internal "stats items" :memcache memcache :mc-use-pool mc-use-pool))
+
+(defun mc-stats-slabs (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Returns an ALIST of stats slabs data from memcached server"
+  (mc-stats-internal "stats slabs" :memcache memcache :mc-use-pool mc-use-pool))
+
+(defun mc-stats-sizes (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  "Returns an ALIST of stats sizes data from memcached server"
+  (mc-stats-internal "stats sizes" :memcache memcache :mc-use-pool mc-use-pool))
 
 
 
@@ -416,5 +448,20 @@ response :
       (mc-set key "0" :memcache memcache :mc-use-pool mc-use-pool)
       (format t "~%~:[FAIL~;Success~] INCR" (eq (mc-incr key  :memcache memcache :mc-use-pool mc-use-pool) 1))
       (format t "~%~:[FAIL~;Success~] DECR" (eq (mc-decr key  :memcache memcache :mc-use-pool mc-use-pool) 0)))))
+
+(defun mc-gets-test (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (let* ((key "gets-test-key")
+         (data1 "some initial data")
+         (data2 "some new data")
+         (response nil)
+         (cas-unique nil))
+    (mc-set key data1 :memcache memcache :mc-use-pool mc-use-pool)
+    (setf response (mc-gets+ key :memcache memcache :mc-use-pool mc-use-pool))
+    (when response
+      (setf cas-unique (mc-cas-unique response))
+      (format t "~%~:[FAIL~;Success~] GETS found key and cas value" cas-unique)
+      (when cas-unique
+        (format t "~%~:[FAIL~;Success~] CAS with correct value" (string= (mc-cas key data2 cas-unique :memcache memcache :mc-use-pool mc-use-pool) "STORED"))
+        (format t "~%~:[FAIL~;Success~] CAS with incorrect value" (string= (mc-cas key data1 cas-unique :memcache memcache :mc-use-pool mc-use-pool) "EXISTS"))))))
 
 ;;;EOF
