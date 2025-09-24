@@ -42,6 +42,15 @@
 	   #:mc-stats-sizes
 	   #:mc-gets+
 	   #:mc-gets-test
+	   #:mc-meta-get
+	   #:mc-meta-set
+	   #:mc-meta-delete
+	   #:mc-meta-test
+	   #:mc-meta-advanced-test
+	   #:mc-with-connection
+	   #:mc-read-meta-response
+	   #:mc-meta-noop
+	   #:mc-meta-pipelining-test
 	   ))
 
 

@@ -222,3 +222,64 @@ When we do not use the pool we make a new socket connection every time.
 The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.
 
 
+-----
+
+Meta Protocol
+-------------
+
+This library also supports the modern memcached "meta protocol". This is a text-based protocol that is more efficient and feature-rich than the classic text protocol. It is recommended for all new applications.
+
+The meta protocol functions are prefixed with `mc-meta-`.
+
+**mc-meta-get** key &key (value t) (cas nil) (recache-on-miss-ttl nil) (early-recache-ttl nil) (quiet nil) (opaque nil) (return-key nil) (key-is-base64 nil)
+
+Retrieves a key using the `mg` meta command. Returns two values: a hash table with the response data, and `t` if the key was found. The response hash table may contain keys like `:cas`, `:win`, `:stale`, `:opaque`, `:key`, and `:value`.
+
+**mc-meta-set** key data &key (ttl 0) (client-flags 0) (cas nil) (quiet nil) (keep-stale nil) (key-is-base64 nil) (opaque nil) (return-key nil)
+
+Stores a key-value pair using the `ms` meta command.
+
+**mc-meta-delete** key &key (cas nil) (quiet nil) (mark-stale nil) (stale-ttl nil) (key-is-base64 nil) (opaque nil) (return-key nil)
+
+Deletes a key using the `md` meta command.
+
+### Pipelining
+
+The meta protocol is designed for pipelining, which can significantly improve performance by sending multiple commands to the server before reading responses. This library supports pipelining via the `mc-with-connection` macro and the `:stream` and `:quiet` keyword arguments.
+
+```lisp
+(mc-with-connection (s)
+  ;; Send two set commands without waiting for a response
+  (mc-meta-set "key1" "data1" :stream s :quiet t)
+  (mc-meta-set "key2" "data2" :stream s :quiet t)
+
+  ;; Send two get commands, also without waiting for a response.
+  ;; Use opaque tokens to correlate requests and responses.
+  (mc-meta-get "key1" :stream s :quiet t :opaque "req1")
+  (mc-meta-get "key2" :stream s :quiet t :opaque "req2")
+
+  ;; Send a no-op command to flush the pipeline and get a final response.
+  (mc-meta-noop :stream s)
+
+  ;; Now, read the responses from the stream.
+  (let ((resp1 (mc-read-meta-response s))
+        (resp2 (mc-read-meta-response s))
+        (resp3 (mc-read-meta-response s)))
+    ;; resp1 will be the response for "key1" (opaque "req1")
+    ;; resp2 will be the response for "key2" (opaque "req2")
+    ;; resp3 will be the response for the noop ("MN")
+    ))
+```
+
+### Advanced Flags
+
+The meta protocol functions support a variety of flags for advanced caching strategies:
+
+*   `:recache-on-miss-ttl` (Get): `N` flag. If the item is not found, create a new item with this TTL to prevent dogpiling. The response will contain a `:win` flag.
+*   `:early-recache-ttl` (Get): `R` flag. If the item's remaining TTL is less than this value, the response will contain a `:win` flag, signaling the client to recache it.
+*   `:mark-stale` (Delete): `I` flag. Marks an item as stale instead of deleting it.
+*   `:keep-stale` (Set): `I` flag. When used with `:cas`, updates a stale item while keeping it marked as stale.
+*   `:quiet` (All): `q` flag. Suppresses nominal responses (e.g., "HD", "ST").
+*   `:opaque` (All): `O` flag. A token that is reflected in the response, useful for pipelining.
+*   `:return-key` (All): `k` flag. The key is returned in the response.
+*   `:key-is-base64` (All): `b` flag. Indicates that the key is base64-encoded.

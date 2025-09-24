@@ -464,4 +464,245 @@ response :
         (format t "~%~:[FAIL~;Success~] CAS with correct value" (string= (mc-cas key data2 cas-unique :memcache memcache :mc-use-pool mc-use-pool) "STORED"))
         (format t "~%~:[FAIL~;Success~] CAS with incorrect value" (string= (mc-cas key data1 cas-unique :memcache memcache :mc-use-pool mc-use-pool) "EXISTS"))))))
 
+
+;;;
+;;; Meta Protocol functionality
+;;;
+
+(defun meta-server-request (command key &key flags data-len)
+  (babel:string-to-octets
+   (with-output-to-string (str)
+     (write-string command str)
+     (write-char #\Space str)
+     (write-string key str)
+     (when data-len
+       (write-char #\Space str)
+       (princ data-len str))
+     (loop for flag in flags
+           do (write-char #\Space str)
+              (if (consp flag)
+                  (progn
+                    (write-char (car flag) str)
+                    (princ (cdr flag) str))
+                  (write-char flag str)))
+     (write-string +crlf+ str))
+    :encoding +command-encoding+))
+
+(defmacro mc-with-connection ((stream-var &key (memcache *memcache*) (use-pool *mc-use-pool*)) &body body)
+  `(mc-with-pool-y/n (,memcache ,use-pool ,stream-var)
+     ,@body))
+
+(defun mc-read-meta-response (stream &key requested-flags)
+  (let* ((line (read-line-from-binary-stream stream))
+         (parts (split-sequence:split-sequence #\Space line))
+         (rc (first parts)))
+    (cond
+      ((string= rc "VA")
+       (let* ((data-len (parse-integer (second parts)))
+              (tokens (cddr parts))
+              (response-data (make-hash-table))
+              (data-raw nil))
+         (loop for token in tokens
+               do (let ((flag-char (char token 0)))
+                    (case flag-char
+                      (#\c (setf (gethash :cas response-data) (subseq token 1)))
+                      (#\O (setf (gethash :opaque response-data) (subseq token 1)))
+                      (#\k (setf (gethash :key response-data) (subseq token 1)))
+                      (#\W (setf (gethash :win response-data) t))
+                      (#\Z (setf (gethash :already-won response-data) t))
+                      (#\X (setf (gethash :stale response-data) t)))))
+         (when (find #\v requested-flags)
+           (setf data-raw (make-sequence '(vector (unsigned-byte 8)) data-len))
+           (read-sequence data-raw stream)
+           (read-line-from-binary-stream stream)
+           (setf (gethash :value response-data) data-raw))
+         (values response-data t)))
+      ((or (string= rc "EN") (string= rc "HD") (string= rc "EX") (string= rc "ST") (string= rc "MN"))
+       (values rc nil))
+      (t
+       (cl-mc-error "Unknown meta response: ~a" line)))))
+
+(defun mc-meta-get (key &key (stream nil) (value t) (cas nil) (recache-on-miss-ttl nil) (early-recache-ttl nil)
+                        (quiet nil) (opaque nil) (return-key nil) (key-is-base64 nil))
+  (flet ((do-it (s)
+           (let ((flags ()))
+             (when value (push #\v flags))
+             (when cas (push #\c flags))
+             (when recache-on-miss-ttl (push (cons #\N recache-on-miss-ttl) flags))
+             (when early-recache-ttl (push (cons #\R early-recache-ttl) flags))
+             (when quiet (push #\q flags))
+             (when opaque (push (cons #\O opaque) flags))
+             (when return-key (push #\k flags))
+             (when key-is-base64 (push #\b flags))
+             (setf flags (reverse flags))
+
+             (write-sequence (meta-server-request "mg" key :flags flags) s)
+             (force-output s)
+
+             (unless quiet
+               (mc-read-meta-response s :requested-flags flags)))))
+    (if stream
+        (do-it stream)
+        (mc-with-connection (s)
+          (do-it s)))))
+
+(defun mc-meta-set (key data &key (stream nil) (ttl 0) (client-flags 0) (cas nil) (quiet nil) (keep-stale nil)
+                               (key-is-base64 nil) (opaque nil) (return-key nil))
+  (flet ((do-it (s)
+           (let ((flags ())
+                 (data-octets (if (typep data '(array (unsigned-byte 8)))
+                                  data
+                                  (babel:string-to-octets data))))
+             (when (> ttl 0) (push (cons #\T ttl) flags))
+             (when (> client-flags 0) (push (cons #\F client-flags) flags))
+             (when cas (push (cons #\C cas) flags))
+             (when quiet (push #\q flags))
+             (when keep-stale (push #\I flags))
+             (when key-is-base64 (push #\b flags))
+             (when opaque (push (cons #\O opaque) flags))
+             (when return-key (push #\k flags))
+             (setf flags (reverse flags))
+
+             (write-sequence (meta-server-request "ms" key :flags flags :data-len (length data-octets)) s)
+             (force-output s)
+             (write-sequence data-octets s)
+             (write-sequence (babel:string-to-octets +crlf+) s)
+             (force-output s)
+
+             (unless quiet
+               (mc-read-meta-response s)))))
+    (if stream
+        (do-it stream)
+        (mc-with-connection (s)
+          (do-it s)))))
+
+(defun mc-meta-delete (key &key (stream nil) (cas nil) (quiet nil) (mark-stale nil) (stale-ttl nil)
+                           (key-is-base64 nil) (opaque nil) (return-key nil))
+  (flet ((do-it (s)
+           (let ((flags ()))
+             (when cas (push (cons #\C cas) flags))
+             (when quiet (push #\q flags))
+             (when mark-stale (push #\I flags))
+             (when stale-ttl (push (cons #\T stale-ttl) flags))
+             (when key-is-base64 (push #\b flags))
+             (when opaque (push (cons #\O opaque) flags))
+             (when return-key (push #\k flags))
+             (setf flags (reverse flags))
+
+             (write-sequence (meta-server-request "md" key :flags flags) s)
+             (force-output s)
+
+             (unless quiet
+               (mc-read-meta-response s)))))
+    (if stream
+        (do-it stream)
+        (mc-with-connection (s)
+          (do-it s)))))
+
+(defun mc-meta-noop (&key (stream nil))
+  (flet ((do-it (s)
+           (write-sequence (meta-server-request "mn" "") s)
+           (force-output s)
+           (mc-read-meta-response s)))
+    (if stream
+        (do-it stream)
+        (mc-with-connection (s)
+          (do-it s)))))
+
+(defun mc-meta-test (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (let ((key "meta-test-key")
+        (data1 "meta data 1")
+        (data2 "meta data 2"))
+    (mc-meta-set key data1)
+    (multiple-value-bind (response foundp) (mc-meta-get key)
+      (if foundp
+          (progn
+            (format t "~%~:[FAIL~;Success~] Meta GET found key" t)
+            (format t "~%~:[FAIL~;Success~] Meta GET got correct data"
+                    (string= (babel:octets-to-string (gethash :value response)) data1)))
+          (format t "~%FAIL Meta GET did not find key")))
+
+    (multiple-value-bind (response foundp) (mc-meta-get key :cas t)
+      (if foundp
+          (let ((cas (gethash :cas response)))
+            (if cas
+                (progn
+                  (format t "~%~:[FAIL~;Success~] Meta GET with CAS got a CAS value" t)
+                  (let ((set-response (mc-meta-set key data2 :cas cas)))
+                    (format t "~%~:[FAIL~;Success~] Meta SET with correct CAS" (string= set-response "HD")))
+                  (let ((set-response (mc-meta-set key data1 :cas cas)))
+                    (format t "~%~:[FAIL~;Success~] Meta SET with incorrect CAS" (string= set-response "EX"))))
+                (format t "~%FAIL Meta GET with CAS did not get a CAS value")))
+          (format t "~%FAIL Meta GET did not find key for CAS test")))))
+
+(defun mc-meta-advanced-test (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (let ((key "meta-adv-test-key")
+        (data "some data"))
+    ;; Test for N flag (dogpiling)
+    (mc-del key) ; ensure key doesn't exist
+    (multiple-value-bind (response foundp) (mc-meta-get key :cas t :recache-on-miss-ttl 30)
+      (if foundp
+          (progn
+            (format t "~%~:[FAIL~;Success~] Meta GET with N flag got a win" (gethash :win response))
+            (let ((cas (gethash :cas response)))
+              (when cas
+                (mc-meta-set key data :cas cas)
+                (multiple-value-bind (r2 f2) (mc-meta-get key)
+                  (format t "~%~:[FAIL~;Success~] Can get key after setting with win" f2)
+                  (when f2
+                    (format t "~%~:[FAIL~;Success~] Data is correct after setting with win"
+                            (string= (babel:octets-to-string (gethash :value r2)) data)))))))
+          (format t "~%FAIL Meta GET with N flag did not get a win response")))
+
+    (multiple-value-bind (response foundp) (mc-meta-get key :recache-on-miss-ttl 30)
+      (if foundp
+          (format t "~%~:[FAIL~;Success~] Meta GET with N flag on existing key got already-won"
+                  (gethash :already-won response))
+          (format t "~%FAIL Meta GET with N on existing key failed")))
+
+    ;; Test for I flag (stale data)
+    (mc-meta-set key data)
+    (mc-meta-delete key :mark-stale t)
+    (multiple-value-bind (response foundp) (mc-meta-get key)
+      (if foundp
+          (progn
+            (format t "~%~:[FAIL~;Success~] Meta GET on stale data found key" t)
+            (format t "~%~:[FAIL~;Success~] Meta GET on stale data returned stale flag" (gethash :stale response))
+            (format t "~%~:[FAIL~;Success~] Meta GET on stale data returned win flag" (gethash :win response))
+            (format t "~%~:[FAIL~;Success~] Meta GET on stale data returned correct data"
+                    (string= (babel:octets-to-string (gethash :value response)) data)))
+          (format t "~%FAIL Meta GET on stale data did not find key")))))
+
+(defun mc-meta-pipelining-test (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
+  (let ((key1 "pipe-test-1") (data1 "pipe-data-1")
+        (key2 "pipe-test-2") (data2 "pipe-data-2"))
+    (mc-with-connection (s :memcache memcache :use-pool mc-use-pool)
+      ;; Quiet sets
+      (mc-meta-set key1 data1 :stream s :quiet t)
+      (mc-meta-set key2 data2 :stream s :quiet t)
+
+      ;; Quiet gets with opaque tokens
+      (mc-meta-get key1 :stream s :quiet t :opaque "req1")
+      (mc-meta-get key2 :stream s :quiet t :opaque "req2")
+      (mc-meta-get "non-existent-key" :stream s :quiet t :opaque "req3")
+
+      ;; Final non-quiet command to flush the pipeline
+      (mc-meta-noop :stream s)
+
+      ;; Read responses
+      (multiple-value-bind (r1 f1) (mc-read-meta-response s)
+        (format t "~%~:[FAIL~;Success~] Pipeline response 1 found" f1)
+        (when f1 (format t "~%~:[FAIL~;Success~] Pipeline response 1 opaque correct" (string= (gethash :opaque r1) "req1"))))
+
+      (multiple-value-bind (r2 f2) (mc-read-meta-response s)
+        (format t "~%~:[FAIL~;Success~] Pipeline response 2 found" f2)
+        (when f2 (format t "~%~:[FAIL~;Success~] Pipeline response 2 opaque correct" (string= (gethash :opaque r2) "req2"))))
+
+      (multiple-value-bind (r3 f3) (mc-read-meta-response s)
+        (format t "~%~:[FAIL~;Success~] Pipeline response 3 not found" (not f3))
+        (when (not f3) (format t "~%~:[FAIL~;Success~] Pipeline response 3 is EN" (string= r3 "EN"))))
+
+      (let ((r4 (mc-read-meta-response s)))
+        (format t "~%~:[FAIL~;Success~] Pipeline noop response is MN" (string= r4 "MN"))))))
+
 ;;;EOF
