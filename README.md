@@ -271,6 +271,66 @@ The meta protocol is designed for pipelining, which can significantly improve pe
     ))
 ```
 
+### More Examples
+
+#### Check-and-Set (CAS)
+
+```lisp
+;; Set an initial value
+(mc-meta-set "cas-key" "value1")
+
+;; Get the value along with its CAS identifier
+(multiple-value-bind (response foundp) (mc-meta-get "cas-key" :cas t)
+  (when foundp
+    (let ((cas-id (gethash :cas response)))
+      ;; Try to update the key with the correct CAS ID. This should succeed.
+      (print (mc-meta-set "cas-key" "value2" :cas cas-id))
+      ;; -> "HD" (success)
+
+      ;; Try to update it again with the same (now stale) CAS ID. This should fail.
+      (print (mc-meta-set "cas-key" "value3" :cas cas-id)))))
+      ;; -> "EX" (exists, i.e., CAS mismatch)
+```
+
+#### Stampeding Herd Protection (Dogpiling)
+
+```lisp
+;; Ensure the key does not exist
+(mc-del "dogpile-key")
+
+;; The first client to request a missing key with the N flag gets a "win" token.
+(multiple-value-bind (response foundp) (mc-meta-get "dogpile-key" :cas t :recache-on-miss-ttl 60)
+  (print (gethash :win response))
+  ;; -> T
+  (let ((cas-id (gethash :cas response)))
+    ;; The winner can now set the value.
+    (mc-meta-set "dogpile-key" "fresh-data" :cas cas-id)))
+
+;; A subsequent client will see that someone else is already fetching the data.
+(multiple-value-bind (response foundp) (mc-meta-get "dogpile-key" :recache-on-miss-ttl 60)
+  (print (gethash :already-won response)))
+  ;; -> T
+```
+
+#### Serving Stale Data
+
+```lisp
+;; Set a value
+(mc-meta-set "stale-key" "current-data")
+
+;; Mark the item as stale instead of deleting it.
+(mc-meta-delete "stale-key" :mark-stale t)
+
+;; Get the stale item.
+(multiple-value-bind (response foundp) (mc-meta-get "stale-key")
+  (print (gethash :stale response))
+  ;; -> T
+  (print (gethash :win response))
+  ;; -> T (the client is told to recache the stale item)
+  (print (babel:octets-to-string (gethash :value response))))
+  ;; -> "current-data"
+```
+
 ### Advanced Flags
 
 The meta protocol functions support a variety of flags for advanced caching strategies:

@@ -470,6 +470,7 @@ response :
 ;;;
 
 (defun meta-server-request (command key &key flags data-len)
+  "Internal function to construct a meta protocol command string."
   (babel:string-to-octets
    (with-output-to-string (str)
      (write-string command str)
@@ -478,6 +479,7 @@ response :
      (when data-len
        (write-char #\Space str)
        (princ data-len str))
+     ;; Flags can be a single char, or a cons cell of (char . value)
      (loop for flag in flags
            do (write-char #\Space str)
               (if (consp flag)
@@ -489,19 +491,29 @@ response :
     :encoding +command-encoding+))
 
 (defmacro mc-with-connection ((stream-var &key (memcache *memcache*) (use-pool *mc-use-pool*)) &body body)
+  "Provides a macro to wrap a series of commands in a single connection from the pool.
+The connection stream is bound to STREAM-VAR. This is the primary mechanism for pipelining."
   `(mc-with-pool-y/n (,memcache ,use-pool ,stream-var)
      ,@body))
 
 (defun mc-read-meta-response (stream &key requested-flags)
+  "Reads and parses a single response from a meta protocol stream.
+This is intended for use after sending one or more quiet requests in a pipeline.
+Returns two values:
+1. A hash table containing the parsed response data (for 'VA' responses), or a string with the response code for other responses.
+2. A boolean indicating if a value was found (only true for 'VA' responses)."
   (let* ((line (read-line-from-binary-stream stream))
          (parts (split-sequence:split-sequence #\Space line))
          (rc (first parts)))
     (cond
       ((string= rc "VA")
+       ;; A VA response indicates a value is being returned.
        (let* ((data-len (parse-integer (second parts)))
               (tokens (cddr parts))
               (response-data (make-hash-table))
               (data-raw nil))
+         ;; Parse the response tokens. The server returns tokens for flags
+         ;; that were requested and have a value.
          (loop for token in tokens
                do (let ((flag-char (char token 0)))
                     (case flag-char
@@ -511,12 +523,14 @@ response :
                       (#\W (setf (gethash :win response-data) t))
                       (#\Z (setf (gethash :already-won response-data) t))
                       (#\X (setf (gethash :stale response-data) t)))))
+         ;; If the 'v' flag was requested, read the data block.
          (when (find #\v requested-flags)
            (setf data-raw (make-sequence '(vector (unsigned-byte 8)) data-len))
            (read-sequence data-raw stream)
-           (read-line-from-binary-stream stream)
+           (read-line-from-binary-stream stream) ; consume trailing CRLF
            (setf (gethash :value response-data) data-raw))
          (values response-data t)))
+      ;; Other response codes are simpler and don't have a data block.
       ((or (string= rc "EN") (string= rc "HD") (string= rc "EX") (string= rc "ST") (string= rc "MN"))
        (values rc nil))
       (t
@@ -524,6 +538,22 @@ response :
 
 (defun mc-meta-get (key &key (stream nil) (value t) (cas nil) (recache-on-miss-ttl nil) (early-recache-ttl nil)
                         (quiet nil) (opaque nil) (return-key nil) (key-is-base64 nil))
+  "Retrieves a key using the 'mg' meta command.
+This is a flexible get operation that supports advanced caching features.
+
+- :stream: An existing connection stream for pipelining. If NIL, a new connection is used.
+- :value: If true, requests the item's value (the 'v' flag).
+- :cas: If true, requests the item's CAS value (the 'c' flag).
+- :recache-on-miss-ttl: If set, uses the 'N' flag to create a placeholder item if the key is not found, to prevent dogpiling. The value is the TTL of the placeholder.
+- :early-recache-ttl: If set, uses the 'R' flag. If the item's remaining TTL is less than this value, the server may signal to recache.
+- :quiet: If true, sends the command but does not read the response (the 'q' flag). For pipelining.
+- :opaque: An opaque token to be reflected in the response (the 'O' flag).
+- :return-key: If true, asks the server to return the key in the response (the 'k' flag).
+- :key-is-base64: If true, indicates the key is base64-encoded (the 'b' flag).
+
+Returns two values:
+1. A hash table with the response data, or a response code string.
+2. A boolean indicating if a value was found."
   (flet ((do-it (s)
            (let ((flags ()))
              (when value (push #\v flags))
@@ -548,6 +578,19 @@ response :
 
 (defun mc-meta-set (key data &key (stream nil) (ttl 0) (client-flags 0) (cas nil) (quiet nil) (keep-stale nil)
                                (key-is-base64 nil) (opaque nil) (return-key nil))
+  "Stores a key using the 'ms' meta command.
+
+- :stream: An existing connection stream for pipelining.
+- :ttl: The time-to-live for the item in seconds (the 'T' flag).
+- :client-flags: The 32-bit flags value for the item (the 'F' flag).
+- :cas: A CAS value for a check-and-set operation (the 'C' flag).
+- :quiet: If true, sends the command but does not read the response (the 'q' flag).
+- :keep-stale: If true, keeps a stale item marked as stale after an update (the 'I' flag).
+- :key-is-base64: If true, indicates the key is base64-encoded (the 'b' flag).
+- :opaque: An opaque token to be reflected in the response (the 'O' flag).
+- :return-key: If true, asks the server to return the key in the response (the 'k' flag).
+
+Returns the server response code (e.g., \"HD\", \"EX\") or NIL if quiet."
   (flet ((do-it (s)
            (let ((flags ())
                  (data-octets (if (typep data '(array (unsigned-byte 8)))
@@ -578,6 +621,18 @@ response :
 
 (defun mc-meta-delete (key &key (stream nil) (cas nil) (quiet nil) (mark-stale nil) (stale-ttl nil)
                            (key-is-base64 nil) (opaque nil) (return-key nil))
+  "Deletes a key using the 'md' meta command.
+
+- :stream: An existing connection stream for pipelining.
+- :cas: A CAS value for a check-and-set delete.
+- :quiet: If true, sends the command but does not read the response.
+- :mark-stale: If true, marks the item as stale instead of deleting it (the 'I' flag).
+- :stale-ttl: When marking as stale, sets a new TTL for the stale item (the 'T' flag).
+- :key-is-base64: If true, indicates the key is base64-encoded (the 'b' flag).
+- :opaque: An opaque token to be reflected in the response (the 'O' flag).
+- :return-key: If true, asks the server to return the key in the response (the 'k' flag).
+
+Returns the server response code (e.g., \"HD\") or NIL if quiet."
   (flet ((do-it (s)
            (let ((flags ()))
              (when cas (push (cons #\C cas) flags))
@@ -600,6 +655,9 @@ response :
           (do-it s)))))
 
 (defun mc-meta-noop (&key (stream nil))
+  "Sends a 'mn' (meta no-op) command.
+This is primarily used to flush a pipeline of quiet requests and get a definitive response.
+Returns \"MN\"."
   (flet ((do-it (s)
            (write-sequence (meta-server-request "mn" "") s)
            (force-output s)
