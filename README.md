@@ -1,4 +1,4 @@
-CL-MEMCACHED
+# CL-MEMCACHED
 ============
 
 CL-MEMCACHED is a **simple**, **fast** & **thread-safe** library to interface with the [memcached](http://www.danga.com/memcached/) object caching system. It implements both the classic TEXT protocol and the modern META protocol.
@@ -146,7 +146,8 @@ Returns an `alist` of slab statistics from the memcached server.
 Returns an `alist` of item size distribution statistics from the memcached server.
 
 
------
+## Examples
+----
 
 Example Usage for testing.
 ```
@@ -210,45 +211,11 @@ CL-MEMCACHED> (mc-decr "t2")
 
 ```
 
-AUTHORS:
-
-Abhijit 'quasi' Rao <quasi@quasilabs.in>
 
 
-DEPENDENCIES:
 
-* usocket http://www.cliki.net/usockes
-* split-sequence http://www.cliki.net/SPLIT-SEQUENCE
-* babel http://common-lisp.net/project/babel/
-* pooler https://github.com/quasi/pooler
+## Meta Protocol
 
-Note :
-The http://common-lisp.net/project/cl-memcached/ is the homepage. But the version there is older and the documentation out of date. I have lost the creds, :-). Till I manage to set that right please ignore that one.
-
-Benchmark
----------
-Host OS : OSX 10.8.4
-Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.
-```
-|-------------------+------------------+---------------+------------------+---------------|
-| implementation    | SET without pool | SET with pool | GET without pool | GET with pool |
-|-------------------+------------------+---------------+------------------+---------------|
-| SBCL 1.1.10       |            4.942 |         0.713 |            4.905 |         0.690 |
-| CCL 1.9-r15759    |            4.711 |         0.847 |            4.506 |         0.648 |
-| CMUCL 20D Unicode |            4.460 |         0.970 |            4.290 |         0.810 |
-|-------------------+------------------+---------------+------------------+---------------|
-| Dalli on Ruby 1.9 |                  |         0.957 |                  |         1.033 |
-|-------------------+------------------+---------------+------------------+---------------|
-```
-When we do not use the pool we make a new socket connection every time.
-
-The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.
-
-
------
-
-Meta Protocol
--------------
 
 This library also supports the modern memcached "meta protocol". This is a text-based protocol that is more efficient and feature-rich than the classic text protocol. It is recommended for all new applications.
 
@@ -306,3 +273,38 @@ The meta protocol functions support a variety of flags for advanced caching stra
 *   `:opaque` (All): `O` flag. A token that is reflected in the response, useful for pipelining.
 *   `:return-key` (All): `k` flag. The key is returned in the response.
 *   `:key-is-base64` (All): `b` flag. Indicates that the key is base64-encoded.
+
+
+## AUTHOR
+
+Abhijit 'quasi' Rao <quasi@quasilabs.in>
+
+
+### DEPENDENCIES:
+
+* pooler https://github.com/quasi/pooler
+* usocket http://www.cliki.net/usockes
+* split-sequence http://www.cliki.net/SPLIT-SEQUENCE
+* babel http://common-lisp.net/project/babel/
+
+
+
+### Benchmark
+
+Host OS : OSX 10.8.4
+Dataset: 1024 bytes (1kb) text string. Repeat 10000 times.
+```
+|-------------------+------------------+---------------+------------------+---------------|
+| implementation    | SET without pool | SET with pool | GET without pool | GET with pool |
+|-------------------+------------------+---------------+------------------+---------------|
+| SBCL 1.1.10       |            4.942 |         0.713 |            4.905 |         0.690 |
+| CCL 1.9-r15759    |            4.711 |         0.847 |            4.506 |         0.648 |
+| CMUCL 20D Unicode |            4.460 |         0.970 |            4.290 |         0.810 |
+|-------------------+------------------+---------------+------------------+---------------|
+| Dalli on Ruby 1.9 |                  |         0.957 |                  |         1.033 |
+|-------------------+------------------+---------------+------------------+---------------|
+```
+When we do not use the pool we make a new socket connection every time.
+
+The Ruby 'dalli' client, which implements the binary protocol, uses the same socket (I think) so this should be comparable with our with-pool.
+
