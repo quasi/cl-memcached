@@ -1,12 +1,17 @@
 CL-MEMCACHED
 ============
 
-CL-MEMCACHED is a **simple**, **fast** & **thread-safe** library to interface with the [memcached](http://www.danga.com/memcached/) object caching system. It implements the Memcached TEXT protocol.
+CL-MEMCACHED is a **simple**, **fast** & **thread-safe** library to interface with the [memcached](http://www.danga.com/memcached/) object caching system. It implements both the classic TEXT protocol and the modern META protocol.
 
 According to the home page :
 > *memcached* is a high-performance, distributed memory object caching system, generic in nature, but intended for use in speeding up dynamic web applications by alleviating database load.
 
 Tested on SBCL, CCL & CMUCL.
+
+**Documentation**: See [DOCUMENTATION.md](DOCUMENTATION.md) for complete guides
+- **Users**: Start with [docs/README.md](docs/README.md) or [docs/quickstart.md](docs/quickstart.md)
+- **Agents/Developers**: Read [CLAUDE.md](CLAUDE.md) and [SKILL.md](SKILL.md)
+- **Complete Spec**: [canon/canon.yaml](canon/canon.yaml)
 
 -----
 Global variables
@@ -121,6 +126,24 @@ Returns a `alist` of the stats.
 **mc-stats-summary** &key (memcache `*memcache*`)
 
 Prints all the details from the alist. ;) Not too hot, but hey.
+
+------
+
+**mc-stats-items** &key (memcache `*memcache*`) (mc-use-pool `*mc-use-pool*`)
+
+Returns an `alist` of per-slab-class item statistics from the memcached server.
+
+------
+
+**mc-stats-slabs** &key (memcache `*memcache*`) (mc-use-pool `*mc-use-pool*`)
+
+Returns an `alist` of slab statistics from the memcached server.
+
+------
+
+**mc-stats-sizes** &key (memcache `*memcache*`) (mc-use-pool `*mc-use-pool*`)
+
+Returns an `alist` of item size distribution statistics from the memcached server.
 
 
 -----

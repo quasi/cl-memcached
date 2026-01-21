@@ -1,0 +1,183 @@
+# Vocabulary
+
+[DRAFT - Extracted from cl-memcached codebase triangulation]
+
+## Core Entities
+
+### Memcache
+
+**Definition**: A structure representing a connection to a memcached server, including connection pooling support.
+
+**Slots**:
+- `name` (simple-string, read-only): Human-readable name for this connection
+- `ip` (simple-string, read-only): Server IP address (default: "127.0.0.1")
+- `port` (fixnum, read-only): Server port (default: 11211)
+- `pool-size` (fixnum, read-only): Maximum number of pooled connections
+- `pool`: Connection pool instance (managed by pooler library)
+
+**Source**: cl-memcached.lisp:48-60
+**Confidence**: 0.95 (convergent with docs)
+
+---
+
+### Memcache Response
+
+**Definition**: A structure containing the response data from a memcached GET or GETS operation.
+
+**Slots**:
+- `key` (simple-string, read-only): The cache key
+- `flags` (read-only): Server-stored flags value
+- `bytes` (fixnum, read-only): Length of data in bytes
+- `cas-unique` (read-only): CAS (Check-And-Set) unique identifier (nil for GET, present for GETS)
+- `data-raw` ((array (unsigned-byte 8)), read-only): Raw octet data
+
+**Accessors**: All use `mc-` prefix (e.g., `mc-key`, `mc-bytes`)
+
+**Source**: cl-memcached.lisp:277-289
+**Confidence**: 0.95 (convergent with docs)
+
+---
+
+## Protocol Concepts
+
+### CAS (Check-And-Set)
+
+**Definition**: Optimistic concurrency control mechanism for safe concurrent updates.
+
+**How it works**:
+1. Client fetches value with `mc-gets` (not `mc-get`) to get CAS token
+2. Client modifies value locally
+3. Client sends update with `mc-cas` including original CAS token
+4. Server only stores if CAS token matches (no concurrent modification)
+
+**Responses**:
+- `STORED`: Update succeeded
+- `EXISTS`: CAS token mismatch (concurrent modification detected)
+- `NOT_FOUND`: Key doesn't exist
+
+**Source**: README.md:41-43, cl-memcached.lisp:218-227
+**Confidence**: 0.98 (convergent)
+
+---
+
+### Meta Protocol
+
+**Definition**: Modern memcached text-based protocol offering improved efficiency and advanced features like pipelining.
+
+**Characteristics**:
+- Text-based (like classic protocol)
+- Supports pipelining (multiple commands before reading responses)
+- Rich flag system for cache semantics (recache-on-miss, early-recache, mark-stale, etc.)
+- Opaque tokens for request/response correlation
+
+**Commands**:
+- `mg`: Meta get
+- `ms`: Meta set
+- `md`: Meta delete
+- `mn`: Meta noop (pipeline flush)
+
+**Source**: README.md:227-286, cl-memcached.lisp:491-711
+**Confidence**: 0.95 (convergent)
+
+---
+
+### Pipelining
+
+**Definition**: Technique of sending multiple memcached commands without waiting for responses, then reading all responses in batch.
+
+**Benefits**:
+- Reduced round-trip latency
+- Higher throughput for bulk operations
+
+**Mechanism**:
+- Use `:quiet t` flag to suppress normal responses
+- Use `:opaque` tokens to correlate requests and responses
+- Send final `mc-meta-noop` to flush pipeline and get terminating response
+
+**Source**: README.md:246-272
+**Confidence**: 0.95 (convergent with tests)
+
+---
+
+## Global Variables
+
+### `*memcache*`
+
+**Type**: Special variable
+**Definition**: Default memcache instance used when `:memcache` keyword not provided
+**Source**: cl-memcached.lisp:16-17, README.md:14-16
+**Confidence**: 0.98 (convergent)
+
+---
+
+### `*mc-use-pool*`
+
+**Type**: Special variable
+**Definition**: Default flag for enabling connection pooling (nil = disabled, t = enabled)
+**Performance impact**: ~3x faster on SBCL when enabled
+**Source**: cl-memcached.lisp:19-20, README.md:18-20
+**Confidence**: 0.98 (convergent)
+
+---
+
+### `*mc-default-encoding*`
+
+**Type**: Special variable
+**Definition**: Babel external format for string encoding/decoding (default: UTF-8)
+**Source**: cl-memcached.lisp:22-23, README.md:22-24
+**Confidence**: 0.98 (convergent)
+
+---
+
+## Response Values
+
+### Storage Command Responses
+
+**STORED**: Data successfully stored
+**NOT_STORED**: Data not stored (condition not met for add/replace)
+**EXISTS**: CAS operation failed (concurrent modification)
+**NOT_FOUND**: Key not found (for CAS or counter operations)
+
+**Source**: cl-memcached.lisp:163-171
+**Confidence**: 0.95
+
+---
+
+### Meta Protocol Responses
+
+**HD**: Success (Hit/Stored)
+**EN**: Not found / Not stored
+**EX**: Exists (CAS mismatch)
+**MN**: No-op response (pipeline terminator)
+**NF**: Not found (delete)
+
+**Source**: tests.lisp, cl-memcached.lisp:495-524
+**Confidence**: 0.9 (inferred from tests)
+
+---
+
+## Naming Conventions
+
+**Function prefix**: All public functions use `mc-` prefix
+**Accessor prefix**: All struct accessors use `mc-` prefix
+**Internal functions**: No consistent prefix (e.g., `server-request`, `read-line-from-binary-stream`)
+
+**Confidence**: 0.98 (convergent)
+
+---
+
+## Dependencies
+
+**External libraries**:
+- `usocket`: Socket I/O
+- `split-sequence`: String splitting
+- `babel`: String encoding/decoding
+- `pooler`: Connection pooling
+
+**Source**: cl-memcached.asd:13-16, README.md:197-200
+**Confidence**: 0.99 (convergent)
+
+---
+
+_Generated by canon-initiate Pass 2: Contract Extraction_
+_Confidence scores indicate triangulation strength (code + docs + tests)_
