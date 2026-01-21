@@ -30,6 +30,11 @@ A Lisp client library that connects your application to memcached—a distribute
 - [Pipelining](how-to/pipelining.md) — Batch operations efficiently
 - [Architecture](architecture.md) — Understand the design
 
+**Reference Documentation:**
+- [Setup Guide](setup.md) — Manual installation and configuration
+- [Troubleshooting Guide](troubleshooting.md) — Common problems and solutions
+- [FAQ](faq.md) — Frequently asked questions
+
 ## Installation
 
 Add to your `.asd` file:
