@@ -488,7 +488,7 @@ response :
      (write-string +crlf+ str))
     :encoding +command-encoding+))
 
-(defmacro mc-with-connection ((stream-var &key (memcache *memcache*) (use-pool *mc-use-pool*)) &body body)
+(defmacro mc-with-connection ((stream-var &key (memcache '*memcache*) (use-pool '*mc-use-pool*)) &body body)
   `(mc-with-pool-y/n (,memcache ,use-pool ,stream-var)
      ,@body))
 
@@ -517,12 +517,13 @@ response :
            (read-line-from-binary-stream stream)
            (setf (gethash :value response-data) data-raw))
          (values response-data t)))
-      ((or (string= rc "EN") (string= rc "HD") (string= rc "EX") (string= rc "ST") (string= rc "MN"))
+      ((or (string= rc "EN") (string= rc "HD") (string= rc "EX") (string= rc "ST") (string= rc "MN") (string= rc "NF") (string= rc "NS"))
        (values rc nil))
       (t
        (cl-mc-error "Unknown meta response: ~a" line)))))
 
-(defun mc-meta-get (key &key (stream nil) (value t) (cas nil) (recache-on-miss-ttl nil) (early-recache-ttl nil)
+(defun mc-meta-get (key &key (stream nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*)
+                        (value t) (cas nil) (recache-on-miss-ttl nil) (early-recache-ttl nil)
                         (quiet nil) (opaque nil) (return-key nil) (key-is-base64 nil))
   (flet ((do-it (s)
            (let ((flags ()))
@@ -543,10 +544,11 @@ response :
                (mc-read-meta-response s :requested-flags flags)))))
     (if stream
         (do-it stream)
-        (mc-with-connection (s)
+        (mc-with-connection (s :memcache memcache :use-pool mc-use-pool)
           (do-it s)))))
 
-(defun mc-meta-set (key data &key (stream nil) (ttl 0) (client-flags 0) (cas nil) (quiet nil) (keep-stale nil)
+(defun mc-meta-set (key data &key (stream nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*)
+                               (ttl 0) (client-flags 0) (cas nil) (quiet nil) (keep-stale nil)
                                (key-is-base64 nil) (opaque nil) (return-key nil))
   (flet ((do-it (s)
            (let ((flags ())
@@ -573,10 +575,11 @@ response :
                (mc-read-meta-response s)))))
     (if stream
         (do-it stream)
-        (mc-with-connection (s)
+        (mc-with-connection (s :memcache memcache :use-pool mc-use-pool)
           (do-it s)))))
 
-(defun mc-meta-delete (key &key (stream nil) (cas nil) (quiet nil) (mark-stale nil) (stale-ttl nil)
+(defun mc-meta-delete (key &key (stream nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*)
+                           (cas nil) (quiet nil) (mark-stale nil) (stale-ttl nil)
                            (key-is-base64 nil) (opaque nil) (return-key nil))
   (flet ((do-it (s)
            (let ((flags ()))
@@ -596,25 +599,25 @@ response :
                (mc-read-meta-response s)))))
     (if stream
         (do-it stream)
-        (mc-with-connection (s)
+        (mc-with-connection (s :memcache memcache :use-pool mc-use-pool)
           (do-it s)))))
 
-(defun mc-meta-noop (&key (stream nil))
+(defun mc-meta-noop (&key (stream nil) (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (flet ((do-it (s)
            (write-sequence (meta-server-request "mn" "") s)
            (force-output s)
            (mc-read-meta-response s)))
     (if stream
         (do-it stream)
-        (mc-with-connection (s)
+        (mc-with-connection (s :memcache memcache :use-pool mc-use-pool)
           (do-it s)))))
 
 (defun mc-meta-test (&key (memcache *memcache*) (mc-use-pool *mc-use-pool*))
   (let ((key "meta-test-key")
         (data1 "meta data 1")
         (data2 "meta data 2"))
-    (mc-meta-set key data1)
-    (multiple-value-bind (response foundp) (mc-meta-get key)
+    (mc-meta-set key data1 :memcache memcache :mc-use-pool mc-use-pool)
+    (multiple-value-bind (response foundp) (mc-meta-get key :memcache memcache :mc-use-pool mc-use-pool)
       (if foundp
           (progn
             (format t "~%~:[FAIL~;Success~] Meta GET found key" t)
@@ -622,15 +625,15 @@ response :
                     (string= (babel:octets-to-string (gethash :value response)) data1)))
           (format t "~%FAIL Meta GET did not find key")))
 
-    (multiple-value-bind (response foundp) (mc-meta-get key :cas t)
+    (multiple-value-bind (response foundp) (mc-meta-get key :cas t :memcache memcache :mc-use-pool mc-use-pool)
       (if foundp
           (let ((cas (gethash :cas response)))
             (if cas
                 (progn
                   (format t "~%~:[FAIL~;Success~] Meta GET with CAS got a CAS value" t)
-                  (let ((set-response (mc-meta-set key data2 :cas cas)))
+                  (let ((set-response (mc-meta-set key data2 :cas cas :memcache memcache :mc-use-pool mc-use-pool)))
                     (format t "~%~:[FAIL~;Success~] Meta SET with correct CAS" (string= set-response "HD")))
-                  (let ((set-response (mc-meta-set key data1 :cas cas)))
+                  (let ((set-response (mc-meta-set key data1 :cas cas :memcache memcache :mc-use-pool mc-use-pool)))
                     (format t "~%~:[FAIL~;Success~] Meta SET with incorrect CAS" (string= set-response "EX"))))
                 (format t "~%FAIL Meta GET with CAS did not get a CAS value")))
           (format t "~%FAIL Meta GET did not find key for CAS test")))))
@@ -639,31 +642,31 @@ response :
   (let ((key "meta-adv-test-key")
         (data "some data"))
     ;; Test for N flag (dogpiling)
-    (mc-del key) ; ensure key doesn't exist
-    (multiple-value-bind (response foundp) (mc-meta-get key :cas t :recache-on-miss-ttl 30)
+    (mc-del key :memcache memcache :mc-use-pool mc-use-pool) ; ensure key doesn't exist
+    (multiple-value-bind (response foundp) (mc-meta-get key :cas t :recache-on-miss-ttl 30 :memcache memcache :mc-use-pool mc-use-pool)
       (if foundp
           (progn
             (format t "~%~:[FAIL~;Success~] Meta GET with N flag got a win" (gethash :win response))
             (let ((cas (gethash :cas response)))
               (when cas
-                (mc-meta-set key data :cas cas)
-                (multiple-value-bind (r2 f2) (mc-meta-get key)
+                (mc-meta-set key data :cas cas :memcache memcache :mc-use-pool mc-use-pool)
+                (multiple-value-bind (r2 f2) (mc-meta-get key :memcache memcache :mc-use-pool mc-use-pool)
                   (format t "~%~:[FAIL~;Success~] Can get key after setting with win" f2)
                   (when f2
                     (format t "~%~:[FAIL~;Success~] Data is correct after setting with win"
                             (string= (babel:octets-to-string (gethash :value r2)) data)))))))
           (format t "~%FAIL Meta GET with N flag did not get a win response")))
 
-    (multiple-value-bind (response foundp) (mc-meta-get key :recache-on-miss-ttl 30)
+    (multiple-value-bind (response foundp) (mc-meta-get key :recache-on-miss-ttl 30 :memcache memcache :mc-use-pool mc-use-pool)
       (if foundp
           (format t "~%~:[FAIL~;Success~] Meta GET with N flag on existing key got already-won"
                   (gethash :already-won response))
           (format t "~%FAIL Meta GET with N on existing key failed")))
 
     ;; Test for I flag (stale data)
-    (mc-meta-set key data)
-    (mc-meta-delete key :mark-stale t)
-    (multiple-value-bind (response foundp) (mc-meta-get key)
+    (mc-meta-set key data :memcache memcache :mc-use-pool mc-use-pool)
+    (mc-meta-delete key :mark-stale t :memcache memcache :mc-use-pool mc-use-pool)
+    (multiple-value-bind (response foundp) (mc-meta-get key :memcache memcache :mc-use-pool mc-use-pool)
       (if foundp
           (progn
             (format t "~%~:[FAIL~;Success~] Meta GET on stale data found key" t)
